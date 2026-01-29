@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -8,21 +8,45 @@ import { db } from "@/lib/firebase";
 export default function CreatePharmacyPage() {
   const router = useRouter();
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [representative, setRepresentative] = useState("");
-  const [whatsapp, setWhatsapp] = useState(""); // ✅ Nuevo estado para WhatsApp
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    representative: "",
+    whatsapp: "",
+    address: "",
+    pin: "",
+  });
+
   const [loading, setLoading] = useState(false);
   const [successPin, setSuccessPin] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  // 🔐 Generate 4-digit PIN
-  const generatePin = () => {
-    return Math.floor(1000 + Math.random() * 9000).toString();
+  // 🔐 Generate 4-digit PIN automatically
+  useEffect(() => {
+    const generatePin = () =>
+      Math.floor(1000 + Math.random() * 9000).toString();
+
+    setForm((prev) => ({
+      ...prev,
+      pin: generatePin(),
+    }));
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
   };
 
   const handleSubmit = async () => {
-    if (!name || !email || !representative || !whatsapp) {
+    if (
+      !form.name ||
+      !form.email ||
+      !form.representative ||
+      !form.whatsapp ||
+      !form.address
+    ) {
       setError("All fields are required");
       return;
     }
@@ -31,23 +55,27 @@ export default function CreatePharmacyPage() {
       setLoading(true);
       setError("");
 
-      const pin = generatePin();
-
       await addDoc(collection(db, "pharmacies"), {
-        name,
-        email,
-        representative,
-        whatsapp, // ✅ Guardamos el número en Firestore
-        pin,
+        name: form.name,
+        email: form.email,
+        representative: form.representative,
+        whatsapp: form.whatsapp,
+        address: form.address,
+        pin: form.pin,
+        suspended: false,
         createdAt: serverTimestamp(),
       });
 
-      setSuccessPin(pin);
+      setSuccessPin(form.pin);
 
-      setName("");
-      setEmail("");
-      setRepresentative("");
-      setWhatsapp("");
+      setForm({
+        name: "",
+        email: "",
+        representative: "",
+        whatsapp: "",
+        address: "",
+        pin: "",
+      });
     } catch (err) {
       setError("Error creating pharmacy");
     } finally {
@@ -55,24 +83,28 @@ export default function CreatePharmacyPage() {
     }
   };
 
-  // 🌐 Función para enviar PIN por WhatsApp
+  // 🌐 Send PIN via WhatsApp
   const sendWhatsapp = () => {
-    if (!whatsapp || !successPin) return;
-    const message = encodeURIComponent(`Your pharmacy PIN is: ${successPin}`);
-    window.open(`https://wa.me/${whatsapp}?text=${message}`, "_blank");
+    if (!form.whatsapp || !successPin) return;
+    const message = encodeURIComponent(
+      `Your pharmacy access PIN is: ${successPin}`
+    );
+    window.open(`https://wa.me/${form.whatsapp}?text=${message}`, "_blank");
   };
 
-  // 📧 Función para enviar PIN por correo
+  // 📧 Send PIN via Email
   const sendEmail = () => {
-    if (!email || !successPin) return;
-    const subject = encodeURIComponent("Your Pharmacy PIN");
-    const body = encodeURIComponent(`Your pharmacy PIN is: ${successPin}`);
-    window.open(`mailto:${email}?subject=${subject}&body=${body}`, "_blank");
+    if (!form.email || !successPin) return;
+    const subject = encodeURIComponent("Your Pharmacy Access PIN");
+    const body = encodeURIComponent(
+      `Your pharmacy access PIN is: ${successPin}`
+    );
+    window.open(`mailto:${form.email}?subject=${subject}&body=${body}`, "_blank");
   };
 
   return (
     <div className="max-w-xl mx-auto p-6">
-      {/* 🔙 Back link */}
+      {/* 🔙 Back */}
       <button
         onClick={() => router.push("/admin/dashboard")}
         className="mb-6 text-sm text-blue-600 hover:underline"
@@ -86,38 +118,64 @@ export default function CreatePharmacyPage() {
 
       <div className="bg-white rounded-xl shadow p-6 space-y-5">
         <input
-          type="text"
+          name="name"
           placeholder="Pharmacy Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={form.name}
+          onChange={handleChange}
           className="w-full border rounded-lg p-3"
         />
 
         <input
+          name="email"
           type="email"
           placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={form.email}
+          onChange={handleChange}
           className="w-full border rounded-lg p-3"
         />
 
         <input
-          type="text"
+          name="representative"
           placeholder="Representative Name"
-          value={representative}
-          onChange={(e) => setRepresentative(e.target.value)}
+          value={form.representative}
+          onChange={handleChange}
           className="w-full border rounded-lg p-3"
         />
 
         <input
-          type="text"
+          name="whatsapp"
           placeholder="WhatsApp Number (with country code)"
-          value={whatsapp}
-          onChange={(e) => setWhatsapp(e.target.value)}
+          value={form.whatsapp}
+          onChange={handleChange}
           className="w-full border rounded-lg p-3"
         />
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {/* ADDRESS */}
+        <input
+          name="address"
+          placeholder="Address"
+          value={form.address}
+          onChange={handleChange}
+          className="w-full border rounded-lg p-3"
+        />
+
+        {/* 🔐 AUTO PIN */}
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Access PIN (auto-generated)
+          </label>
+          <input
+            value={form.pin}
+            disabled
+            className="w-full border rounded-lg p-3 text-center tracking-widest bg-gray-100 font-semibold"
+          />
+        </div>
+
+        {error && (
+          <p className="text-red-600 text-sm">
+            {error}
+          </p>
+        )}
 
         <button
           onClick={handleSubmit}
@@ -127,19 +185,21 @@ export default function CreatePharmacyPage() {
           {loading ? "Creating..." : "Create Pharmacy"}
         </button>
 
+        {/* ✅ SUCCESS */}
         {successPin && (
           <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
             <p className="text-green-700 font-medium">
               Pharmacy created successfully
             </p>
-            <p className="mt-2 text-sm text-gray-700">
+
+            <p className="text-sm text-gray-700">
               Generated PIN:
             </p>
+
             <p className="text-2xl font-bold tracking-widest text-green-700">
               {successPin}
             </p>
 
-            {/* Botones para enviar PIN */}
             <div className="flex gap-4 mt-3">
               <button
                 onClick={sendWhatsapp}
@@ -147,6 +207,7 @@ export default function CreatePharmacyPage() {
               >
                 Send via WhatsApp
               </button>
+
               <button
                 onClick={sendEmail}
                 className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition"
