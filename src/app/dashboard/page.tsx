@@ -28,7 +28,7 @@ export default function DashboardPage() {
         "Deliver medicines securely and update delivery status.",
       color: "border-amber-600 bg-amber-50",
       titleColor: "text-amber-700",
-      path: "/driver/login"
+      path: "/delivery-driver/login"
     },
     {
       title: "Client",

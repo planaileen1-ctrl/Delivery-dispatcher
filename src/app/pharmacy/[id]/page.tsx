@@ -47,7 +47,7 @@ export default function PharmacyDashboard() {
     loadPharmacy();
   }, [router]);
 
-  const handleBackToMenu = () => {
+  const handleLogout = () => {
     localStorage.removeItem("pharmacy");
     router.push("/pharmacy/login");
   };
@@ -61,10 +61,10 @@ export default function PharmacyDashboard() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       
-      {/* 🔙 NAV LINKS */}
+      {/* 🔙 NAV */}
       <div className="mb-6 flex items-center gap-4 text-sm">
         <button
-          onClick={handleBackToMenu}
+          onClick={handleLogout}
           className="text-blue-600 hover:underline"
         >
           ← Back to menu
@@ -84,7 +84,10 @@ export default function PharmacyDashboard() {
         Welcome, {pharmacy.name}
       </h1>
 
+      {/* ✅ MENU COMPLETO DE FARMACIA */}
       <div className="space-y-4">
+
+        {/* CREATE CLIENT */}
         <button
           onClick={() =>
             router.push(`/pharmacy/${pharmacy.id}/create-client`)
@@ -94,6 +97,17 @@ export default function PharmacyDashboard() {
           Create Client
         </button>
 
+        {/* MANAGE CLIENTS */}
+        <button
+          onClick={() =>
+            router.push(`/pharmacy/${pharmacy.id}/clients`)
+          }
+          className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition"
+        >
+          Manage Clients
+        </button>
+
+        {/* CREATE DELIVERY */}
         <button
           onClick={() =>
             router.push(`/pharmacy/${pharmacy.id}/create-delivery`)
@@ -102,6 +116,17 @@ export default function PharmacyDashboard() {
         >
           Create Delivery
         </button>
+
+        {/* VIEW DELIVERIES */}
+        <button
+          onClick={() =>
+            router.push(`/pharmacy/${pharmacy.id}/deliveries`)
+          }
+          className="w-full bg-gray-700 text-white py-3 rounded-lg hover:bg-gray-800 transition"
+        >
+          View Deliveries
+        </button>
+
       </div>
     </div>
   );
