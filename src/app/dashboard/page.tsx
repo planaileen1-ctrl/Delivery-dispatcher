@@ -20,9 +20,16 @@ export default function DashboardPage() {
     {
       title: "Delivery Driver",
       description:
-        "Deliver medicines securely and confirm delivery status.",
+        "Deliver medicines securely and update delivery status.",
       color: "border-amber-600 bg-amber-50",
       titleColor: "text-amber-700",
+    },
+    {
+      title: "Client",
+      description:
+        "Receive pump deliveries and approve or confirm received orders.",
+      color: "border-purple-600 bg-purple-50",
+      titleColor: "text-purple-700",
     },
   ];
 
@@ -32,7 +39,7 @@ export default function DashboardPage() {
         Select your role
       </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         {roles.map((role) => (
           <div
             key={role.title}
