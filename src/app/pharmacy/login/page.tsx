@@ -21,10 +21,10 @@ export default function PharmacyPinLogin() {
       setLoading(true);
       setError("");
 
-      console.log("Checking PIN:", pin); // 🔹 debug
-
-      // 🔹 Buscar farmacia por PIN (sin filtro active para probar)
-      const q = query(collection(db, "pharmacies"), where("pin", "==", pin));
+      const q = query(
+        collection(db, "pharmacies"),
+        where("pin", "==", pin)
+      );
 
       const snapshot = await getDocs(q);
 
@@ -39,12 +39,7 @@ export default function PharmacyPinLogin() {
         name: doc.data().name,
       };
 
-      console.log("Found pharmacy:", pharmacy); // 🔹 debug
-
-      // 🔹 Guardar farmacia en localStorage
       localStorage.setItem("pharmacy", JSON.stringify(pharmacy));
-
-      // 🔹 Redirigir al dashboard
       router.push(`/pharmacy/${pharmacy.id}`);
     } catch (err) {
       console.error(err);
@@ -56,8 +51,17 @@ export default function PharmacyPinLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-6 text-center">
+      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm relative">
+        
+        {/* 🔙 BACK */}
+        <button
+          onClick={() => router.push("/")}
+          className="absolute left-4 top-4 text-sm text-blue-600 hover:underline"
+        >
+          ← Back to menu
+        </button>
+
+        <h1 className="text-2xl font-bold mb-6 text-center mt-6">
           Pharmacy Access
         </h1>
 

@@ -18,22 +18,30 @@ export default function PharmacyAdminPage() {
       const ref = doc(db, "pharmacies", id as string);
       const snap = await getDoc(ref);
 
-      if (snap.exists()) {
-        setPharmacy({ id: snap.id, ...snap.data() });
+      if (!snap.exists()) {
+        alert("Pharmacy not found");
+        router.push("/admin/pharmacies/menu");
+        return;
       }
 
+      // 🔥 Cargamos TODO el documento
+      setPharmacy({ id: snap.id, ...snap.data() });
       setLoading(false);
     };
 
     loadPharmacy();
-  }, [id]);
+  }, [id, router]);
 
   const saveChanges = async () => {
     setSaving(true);
     const ref = doc(db, "pharmacies", id as string);
 
+    // 🔥 Guardamos TODOS los campos editables
     await updateDoc(ref, {
       name: pharmacy.name,
+      email: pharmacy.email,
+      whatsapp: pharmacy.whatsapp,
+      representative: pharmacy.representative,
       pin: pharmacy.pin,
       suspended: pharmacy.suspended ?? false,
     });
@@ -43,8 +51,7 @@ export default function PharmacyAdminPage() {
   };
 
   if (loading) return <p className="mt-10 text-center">Loading...</p>;
-
-  if (!pharmacy) return <p>Pharmacy not found</p>;
+  if (!pharmacy) return null;
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -55,15 +62,25 @@ export default function PharmacyAdminPage() {
         ← Back
       </button>
 
-      <h1 className="text-3xl font-bold mb-6">
-        {pharmacy.name}
+      {/* 🚨 SUSPENDED WARNING */}
+      {pharmacy.suspended === true && (
+        <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
+          ⚠️ This pharmacy is currently <strong>suspended</strong>.
+          It is hidden from the system until reactivated.
+        </div>
+      )}
+
+      <h1 className="text-3xl font-bold mb-8">
+        Pharmacy Details
       </h1>
 
-      {/* 📝 EDIT NAME */}
+      {/* NAME */}
       <div className="mb-4">
-        <label className="block text-sm font-medium">Pharmacy Name</label>
+        <label className="block text-sm font-medium">
+          Pharmacy Name
+        </label>
         <input
-          value={pharmacy.name}
+          value={pharmacy.name ?? ""}
           onChange={(e) =>
             setPharmacy({ ...pharmacy, name: e.target.value })
           }
@@ -71,11 +88,57 @@ export default function PharmacyAdminPage() {
         />
       </div>
 
-      {/* 🔐 PIN */}
+      {/* EMAIL */}
       <div className="mb-4">
-        <label className="block text-sm font-medium">PIN</label>
+        <label className="block text-sm font-medium">
+          Email
+        </label>
         <input
-          value={pharmacy.pin}
+          type="email"
+          value={pharmacy.email ?? ""}
+          onChange={(e) =>
+            setPharmacy({ ...pharmacy, email: e.target.value })
+          }
+          className="w-full border rounded px-3 py-2"
+        />
+      </div>
+
+      {/* WHATSAPP */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium">
+          WhatsApp Number
+        </label>
+        <input
+          value={pharmacy.whatsapp ?? ""}
+          onChange={(e) =>
+            setPharmacy({ ...pharmacy, whatsapp: e.target.value })
+          }
+          className="w-full border rounded px-3 py-2"
+          placeholder="+1 555 123 4567"
+        />
+      </div>
+
+      {/* REPRESENTATIVE */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium">
+          Representative
+        </label>
+        <input
+          value={pharmacy.representative ?? ""}
+          onChange={(e) =>
+            setPharmacy({ ...pharmacy, representative: e.target.value })
+          }
+          className="w-full border rounded px-3 py-2"
+        />
+      </div>
+
+      {/* PIN */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium">
+          PIN
+        </label>
+        <input
+          value={pharmacy.pin ?? ""}
           onChange={(e) =>
             setPharmacy({ ...pharmacy, pin: e.target.value })
           }
@@ -83,8 +146,8 @@ export default function PharmacyAdminPage() {
         />
       </div>
 
-      {/* 🚫 SUSPEND */}
-      <div className="flex items-center gap-2 mb-6">
+      {/* SUSPEND */}
+      <div className="flex items-center gap-2 mb-8">
         <input
           type="checkbox"
           checked={pharmacy.suspended ?? false}
@@ -92,10 +155,12 @@ export default function PharmacyAdminPage() {
             setPharmacy({ ...pharmacy, suspended: e.target.checked })
           }
         />
-        <span className="text-sm">Suspend pharmacy (hide from system)</span>
+        <span className="text-sm">
+          Suspend pharmacy (hide from system)
+        </span>
       </div>
 
-      {/* 💾 SAVE */}
+      {/* SAVE */}
       <button
         onClick={saveChanges}
         disabled={saving}
