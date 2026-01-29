@@ -8,69 +8,62 @@ import { useRouter } from "next/navigation";
 export default function AdminPinLogin() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async () => {
-    if (pin.length !== 4) {
-      setError("PIN must be 4 digits");
-      return;
-    }
-
     try {
-      setLoading(true);
-      setError("");
+      const ref = doc(db, "settings", "admin");
+      const snap = await getDoc(ref);
 
-      const docRef = doc(db, "settings", "admin");
-      const docSnap = await getDoc(docRef);
+      console.log("INPUT PIN:", pin);
 
-      if (!docSnap.exists()) {
-        setError("Admin PIN not configured");
+      if (!snap.exists()) {
+        setError("Admin config not found");
         return;
       }
 
-      const adminPin = docSnap.data().pin;
+      const dbPin = snap.data().pin;
 
-      if (pin === adminPin) {
-        router.push("/admin/dashboard");
-      } else {
+      console.log("DB PIN:", dbPin, typeof dbPin);
+
+      if (Number(pin) !== Number(dbPin)) {
         setError("Invalid PIN");
+        return;
       }
-    } catch (err) {
-      setError("Error validating PIN");
-    } finally {
-      setLoading(false);
+
+      router.push("/admin/dashboard");
+    } catch (e) {
+      console.error(e);
+      setError("System error");
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-6 text-center">
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="bg-white p-8 rounded-xl shadow w-80">
+        <h1 className="text-xl font-bold mb-4 text-center">
           Administrator Access
         </h1>
 
         <input
-          type="password"
-          maxLength={4}
           value={pin}
+          maxLength={4}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-          className="w-full text-center text-2xl tracking-widest border rounded-lg p-3 mb-4"
+          className="w-full border p-3 text-center text-2xl tracking-widest"
           placeholder="••••"
         />
 
         {error && (
-          <p className="text-red-600 text-sm mb-4 text-center">
+          <p className="text-red-600 text-sm mt-3 text-center">
             {error}
           </p>
         )}
 
         <button
           onClick={handleSubmit}
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition"
+          className="w-full bg-blue-600 text-white py-3 mt-4 rounded"
         >
-          {loading ? "Checking..." : "Enter"}
+          Enter
         </button>
       </div>
     </div>
