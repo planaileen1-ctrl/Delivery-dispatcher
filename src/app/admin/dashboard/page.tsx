@@ -41,7 +41,15 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="p-6">
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* 🔙 Back */}
+      <button
+        onClick={() => router.push("/dashboard")}
+        className="mb-6 text-sm text-blue-600 hover:underline"
+      >
+        ← Back to Main Dashboard
+      </button>
+
       <h1 className="text-3xl font-bold mb-10 text-gray-800">
         Administrator Dashboard
       </h1>
@@ -58,6 +66,7 @@ export default function AdminDashboard() {
             >
               {action.title}
             </h2>
+
             <p className="text-gray-700 text-sm leading-relaxed">
               {action.description}
             </p>

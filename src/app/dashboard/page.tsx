@@ -20,6 +20,7 @@ export default function DashboardPage() {
         "Register medicines, manage inventory, and prepare safe deliveries.",
       color: "border-emerald-600 bg-emerald-50",
       titleColor: "text-emerald-700",
+       path: "/pharmacy/login",
     },
     {
       title: "Delivery Driver",
