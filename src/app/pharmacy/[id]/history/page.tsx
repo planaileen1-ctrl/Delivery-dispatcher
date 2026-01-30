@@ -20,8 +20,6 @@ type DeliveryUI = {
   pumpCodes: string[];
   status: string;
   createdAt?: Date;
-  returnedAt?: Date;
-  returnDriverName?: string;
 };
 
 export default function DeliveryHistoryPage() {
@@ -32,86 +30,104 @@ export default function DeliveryHistoryPage() {
   const [deliveries, setDeliveries] = useState<DeliveryUI[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* 🔹 PHARMACY */
+  /* =======================
+     LOAD PHARMACY
+  ======================= */
   useEffect(() => {
-    const loadPharmacy = async () => {
-      const snap = await getDoc(doc(db, "pharmacies", pharmacyId as string));
-      if (snap.exists()) setPharmacyName(snap.data().name);
-    };
-    loadPharmacy();
+    if (!pharmacyId) return;
+
+    getDoc(doc(db, "pharmacies", pharmacyId as string))
+      .then((snap) => {
+        if (snap.exists()) {
+          setPharmacyName(snap.data().name);
+        }
+      })
+      .catch(console.error);
   }, [pharmacyId]);
 
-  /* 🔹 LOAD HISTORY */
+  /* =======================
+     LOAD HISTORY
+  ======================= */
   useEffect(() => {
-    const load = async () => {
-      const q = query(
-        collection(db, "deliveries"),
-        where("pharmacyId", "==", pharmacyId)
-      );
+    if (!pharmacyId) return;
 
-      const snap = await getDocs(q);
+    const loadHistory = async () => {
+      try {
+        const q = query(
+          collection(db, "deliveries"),
+          where("pharmacyId", "==", pharmacyId)
+        );
 
-      const base: Record<string, DeliveryUI> = {};
-      const returns: any[] = [];
+        const snap = await getDocs(q);
+        const result: DeliveryUI[] = [];
 
-      // 1️⃣ split deliveries vs returns
-      for (const d of snap.docs) {
-        const data = d.data();
+        for (const d of snap.docs) {
+          const data = d.data();
 
-        if (data.type === "return") {
-          returns.push({ id: d.id, ...data });
-          continue;
+          // 🧍 Client
+          let clientName = "Unknown";
+          try {
+            const clientSnap = await getDoc(
+              doc(db, "clients", data.clientId)
+            );
+            if (clientSnap.exists()) {
+              clientName = clientSnap.data().name;
+            }
+          } catch {}
+
+          // 🚚 Driver (CAN BE NULL)
+          let driverName = "Unassigned";
+          if (data.driverId) {
+            try {
+              const driverSnap = await getDoc(
+                doc(
+                  db,
+                  "deliveryDrivers",
+                  data.driverId
+                )
+              );
+              if (driverSnap.exists()) {
+                driverName =
+                  driverSnap.data().name;
+              }
+            } catch {}
+          }
+
+          result.push({
+            id: d.id,
+            clientName,
+            driverName,
+            deliveryAddress:
+              data.deliveryAddress,
+            pumpCodes: data.pumpCodes || [],
+            status: data.status,
+            createdAt:
+              data.createdAt?.toDate(),
+          });
         }
 
-        const clientSnap = await getDoc(doc(db, "clients", data.clientId));
-        const driverSnap = await getDoc(
-          doc(db, "deliveryDrivers", data.driverId)
-        );
-
-        base[d.id] = {
-          id: d.id,
-          clientName: clientSnap.exists()
-            ? clientSnap.data().name
-            : "Unknown",
-          driverName: driverSnap.exists()
-            ? driverSnap.data().name
-            : "Unknown",
-          deliveryAddress: data.deliveryAddress,
-          pumpCodes: data.pumpCodes || [],
-          status: data.status,
-          createdAt: data.createdAt?.toDate(),
-        };
+        setDeliveries(result);
+      } catch (err) {
+        console.error("History error:", err);
+      } finally {
+        setLoading(false); // 🔥 ALWAYS
       }
-
-      // 2️⃣ attach returns to original delivery
-      for (const r of returns) {
-        const originalId = r.originalDeliveryId;
-        if (!originalId || !base[originalId]) continue;
-
-        const returnDriverSnap = await getDoc(
-          doc(db, "deliveryDrivers", r.driverId)
-        );
-
-        base[originalId].status = "returned";
-        base[originalId].returnedAt = r.returnedAt?.toDate();
-        base[originalId].returnDriverName = returnDriverSnap.exists()
-          ? returnDriverSnap.data().name
-          : "Unknown";
-      }
-
-      setDeliveries(Object.values(base));
-      setLoading(false);
     };
 
-    load();
+    loadHistory();
   }, [pharmacyId]);
 
+  /* =======================
+     UI
+  ======================= */
   return (
     <div className="max-w-6xl mx-auto p-6">
       {/* NAV */}
       <div className="flex justify-between mb-6 text-sm">
         <button
-          onClick={() => router.push(`/pharmacy/${pharmacyId}`)}
+          onClick={() =>
+            router.push(`/pharmacy/${pharmacyId}`)
+          }
           className="text-blue-600 hover:underline"
         >
           ← Back to menu
@@ -148,18 +164,13 @@ export default function DeliveryHistoryPage() {
                     Driver: {d.driverName}
                   </p>
                   <p className="text-sm">
-                    Address: {d.deliveryAddress}
+                    Address:{" "}
+                    {d.deliveryAddress}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    Pumps: {d.pumpCodes.join(", ")}
+                    Pumps:{" "}
+                    {d.pumpCodes.join(", ")}
                   </p>
-
-                  {d.status === "returned" && (
-                    <p className="text-sm text-yellow-700 mt-2">
-                      🔁 Returned by {d.returnDriverName} on{" "}
-                      {d.returnedAt?.toLocaleString()}
-                    </p>
-                  )}
                 </div>
 
                 <div className="text-right">
@@ -168,9 +179,7 @@ export default function DeliveryHistoryPage() {
                   </p>
                   <span
                     className={`inline-block mt-2 px-3 py-1 text-xs rounded-full ${
-                      d.status === "returned"
-                        ? "bg-yellow-100 text-yellow-700"
-                        : d.status === "delivered"
+                      d.status === "delivered"
                         ? "bg-green-100 text-green-700"
                         : "bg-gray-100 text-gray-700"
                     }`}

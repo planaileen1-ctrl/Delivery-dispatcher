@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-// ✅ ICONS (CalendarSearch AÑADIDO)
+// 🔔 Notifications
+import NotificationsBell from "../../../../components/NotificationsBell";
+
+
+
+// ICONS
 import {
   UserPlus,
   Users,
@@ -14,32 +19,59 @@ import {
   CalendarSearch,
 } from "lucide-react";
 
+type Pharmacy = {
+  id: string;
+  name: string;
+  suspended?: boolean;
+};
+
 export default function PharmacyDashboard() {
   const router = useRouter();
-  const [pharmacy, setPharmacy] = useState<any>(null);
+  const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
   const [loading, setLoading] = useState(true);
 
+  /* =======================
+     LOAD PHARMACY
+  ======================= */
   useEffect(() => {
     const loadPharmacy = async () => {
-      const stored = localStorage.getItem("pharmacy");
+      try {
+        const stored = localStorage.getItem("pharmacy");
 
-      if (!stored) {
-        router.push("/pharmacy/login");
-        return;
-      }
+        if (!stored) {
+          router.replace("/pharmacy/login");
+          return;
+        }
 
-      const localPharmacy = JSON.parse(stored);
-      const ref = doc(db, "pharmacies", localPharmacy.id);
-      const snap = await getDoc(ref);
+        const localPharmacy = JSON.parse(stored);
 
-      if (!snap.exists() || snap.data()?.suspended) {
+        if (!localPharmacy?.id) {
+          localStorage.removeItem("pharmacy");
+          router.replace("/pharmacy/login");
+          return;
+        }
+
+        const ref = doc(db, "pharmacies", localPharmacy.id);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists() || snap.data()?.suspended) {
+          localStorage.removeItem("pharmacy");
+          router.replace("/pharmacy/login");
+          return;
+        }
+
+        setPharmacy({
+          id: snap.id,
+          name: snap.data().name,
+          suspended: snap.data().suspended,
+        });
+      } catch (err) {
+        console.error("Error loading pharmacy:", err);
         localStorage.removeItem("pharmacy");
-        router.push("/pharmacy/login");
-        return;
+        router.replace("/pharmacy/login");
+      } finally {
+        setLoading(false);
       }
-
-      setPharmacy({ id: snap.id, ...snap.data() });
-      setLoading(false);
     };
 
     loadPharmacy();
@@ -53,29 +85,43 @@ export default function PharmacyDashboard() {
     );
   }
 
+  if (!pharmacy) return null;
+
+  /* =======================
+     UI
+  ======================= */
   return (
     <div className="max-w-6xl mx-auto px-6 py-10">
 
-      {/* TOP NAV */}
-      <div className="flex items-center gap-4 text-sm mb-10">
-        <button
-          onClick={() => {
-            localStorage.removeItem("pharmacy");
-            router.push("/pharmacy/login");
-          }}
-          className="text-blue-600 hover:underline"
-        >
-          ← Back to menu
-        </button>
+      {/* TOP BAR */}
+      <div className="flex items-center justify-between mb-10">
 
-        <span className="text-gray-300">|</span>
+        <div className="flex items-center gap-4 text-sm">
+          <button
+            onClick={() => {
+              localStorage.removeItem("pharmacy");
+              router.push("/pharmacy/login");
+            }}
+            className="text-blue-600 hover:underline"
+          >
+            ← Logout
+          </button>
 
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="text-blue-600 hover:underline"
-        >
-          Back to dashboard
-        </button>
+          <span className="text-gray-300">|</span>
+
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="text-blue-600 hover:underline"
+          >
+            Back to main dashboard
+          </button>
+        </div>
+
+        {/* 🔔 NOTIFICATIONS */}
+        <NotificationsBell
+          userId={pharmacy.id}
+          role="pharmacy"
+        />
       </div>
 
       {/* TITLE */}
@@ -84,7 +130,7 @@ export default function PharmacyDashboard() {
       </h1>
 
       <p className="text-gray-500 mb-10">
-        Manage clients and deliveries from your pharmacy dashboard.
+        Manage clients, deliveries, returns and pump traceability from your pharmacy dashboard.
       </p>
 
       {/* CARDS */}
@@ -130,7 +176,18 @@ export default function PharmacyDashboard() {
           }
         />
 
-        {/* ✅ NUEVA TARJETA DE TRAZABILIDAD */}
+        {/* 🔁 RETURNS */}
+        <DashboardCard
+          title="Return Confirmations"
+          description="Confirm returned pumps from drivers."
+          icon={<PackageSearch size={28} />}
+          gradient="from-green-600 to-emerald-600"
+          onClick={() =>
+            router.push("/pharmacy/returns")
+          }
+        />
+
+        {/* TRACEABILITY */}
         <DashboardCard
           title="Pump Traceability"
           description="Track pumps by date, driver and full history."
@@ -146,7 +203,9 @@ export default function PharmacyDashboard() {
   );
 }
 
-/* 🧩 CARD COMPONENT */
+/* =======================
+   CARD COMPONENT
+======================= */
 function DashboardCard({
   title,
   description,

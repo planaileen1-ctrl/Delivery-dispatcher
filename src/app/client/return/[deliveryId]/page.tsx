@@ -14,19 +14,11 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-type Driver = {
-  id: string;
-  name: string;
-};
-
 export default function ReturnPumpsPage() {
   const { deliveryId } = useParams();
   const router = useRouter();
 
   const [delivery, setDelivery] = useState<any>(null);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [driverId, setDriverId] = useState("");
-
   const [extraPumps, setExtraPumps] = useState("");
   const [checking, setChecking] = useState(false);
 
@@ -38,6 +30,7 @@ export default function ReturnPumpsPage() {
       const snap = await getDoc(
         doc(db, "deliveries", deliveryId as string)
       );
+
       if (snap.exists()) {
         setDelivery({ id: snap.id, ...snap.data() });
       }
@@ -46,29 +39,9 @@ export default function ReturnPumpsPage() {
   }, [deliveryId]);
 
   /* =======================
-     LOAD DRIVERS
-  ======================= */
-  useEffect(() => {
-    const loadDrivers = async () => {
-      const snap = await getDocs(
-        collection(db, "deliveryDrivers")
-      );
-      setDrivers(
-        snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name,
-        }))
-      );
-    };
-    loadDrivers();
-  }, []);
-
-  /* =======================
      VERIFY EXTRA PUMPS
   ======================= */
-  const verifyExtraPumps = async (
-    pumps: string[]
-  ) => {
+  const verifyExtraPumps = async (pumps: string[]) => {
     for (const pump of pumps) {
       const q = query(
         collection(db, "deliveries"),
@@ -76,22 +49,16 @@ export default function ReturnPumpsPage() {
       );
 
       const snap = await getDocs(q);
-
-      if (!snap.empty) {
-        return pump; // ❌ duplicated
-      }
+      if (!snap.empty) return pump; // ❌ duplicated
     }
-    return null; // ✅ all good
+    return null;
   };
 
   /* =======================
      SUBMIT RETURN
   ======================= */
   const submitReturn = async () => {
-    if (!driverId) {
-      alert("Select a driver");
-      return;
-    }
+    if (!delivery) return;
 
     const extraPumpList = extraPumps
       .split(",")
@@ -101,13 +68,9 @@ export default function ReturnPumpsPage() {
     setChecking(true);
 
     // 🔍 VERIFY DUPLICATES
-    const duplicatedPump =
-      await verifyExtraPumps(extraPumpList);
-
+    const duplicatedPump = await verifyExtraPumps(extraPumpList);
     if (duplicatedPump) {
-      alert(
-        `Pump ${duplicatedPump} has already been sent before.`
-      );
+      alert(`Pump ${duplicatedPump} has already been sent before.`);
       setChecking(false);
       return;
     }
@@ -118,24 +81,59 @@ export default function ReturnPumpsPage() {
       ...extraPumpList,
     ];
 
-    await addDoc(collection(db, "deliveries"), {
-      type: "return",
-      originalDeliveryId: delivery.id,
+    // 📦 CREATE RETURN DELIVERY
+    const returnRef = await addDoc(
+      collection(db, "deliveries"),
+      {
+        type: "return",
+        originalDeliveryId: delivery.id,
 
-      pharmacyId: delivery.pharmacyId,
-      clientId: delivery.clientId,
-      driverId,
+        pharmacyId: delivery.pharmacyId,
+        clientId: delivery.clientId,
+        driverId: null, // assigned later
 
-      pumpCodes: finalPumpCodes,
+        pumpCodes: finalPumpCodes,
 
-      originalReceivedAt: delivery.receivedAt,
-      returnCreatedAt: serverTimestamp(),
+        status: "return_requested",
 
-      status: "return_created",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }
+    );
+
+    /* =======================
+       NOTIFICATIONS
+    ======================= */
+
+    // 🔔 Notify pharmacy
+    await addDoc(collection(db, "notifications"), {
+      userId: delivery.pharmacyId,
+      role: "pharmacy",
+      title: "New return requested",
+      message: "A client has requested a pump return.",
+      deliveryId: returnRef.id,
+      read: false,
       createdAt: serverTimestamp(),
     });
 
-    alert("Return created successfully");
+    // 🔔 Notify all drivers
+    const driversSnap = await getDocs(
+      collection(db, "deliveryDrivers")
+    );
+
+    for (const d of driversSnap.docs) {
+      await addDoc(collection(db, "notifications"), {
+        userId: d.id,
+        role: "driver",
+        title: "New return available",
+        message: "A pump return is ready for pickup.",
+        deliveryId: returnRef.id,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
+
+    alert("Return request sent successfully");
     router.push("/client/dashboard");
   };
 
@@ -169,9 +167,7 @@ export default function ReturnPumpsPage() {
 
       <p className="text-sm text-gray-600 mb-6">
         Received on:{" "}
-        {delivery.receivedAt
-          ?.toDate()
-          .toLocaleString()}
+        {delivery.receivedAt?.toDate().toLocaleString()}
       </p>
 
       {/* EXTRA PUMPS */}
@@ -180,42 +176,17 @@ export default function ReturnPumpsPage() {
       </label>
       <input
         value={extraPumps}
-        onChange={(e) =>
-          setExtraPumps(e.target.value)
-        }
+        onChange={(e) => setExtraPumps(e.target.value)}
         placeholder="PMP-301, PMP-455"
         className="w-full border p-2 mb-6"
       />
-
-      {/* DRIVER */}
-      <label className="block font-medium mb-2">
-        Select driver
-      </label>
-      <select
-        value={driverId}
-        onChange={(e) =>
-          setDriverId(e.target.value)
-        }
-        className="w-full border p-2 mb-6"
-      >
-        <option value="">
-          Select driver
-        </option>
-        {drivers.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.name}
-          </option>
-        ))}
-      </select>
 
       <button
         onClick={submitReturn}
         disabled={checking}
         className="w-full bg-yellow-600 text-white py-3 rounded disabled:opacity-50"
       >
-        {checking
-          ? "Checking pumps..."
-          : "Confirm Return"}
+        {checking ? "Checking pumps..." : "Confirm Return"}
       </button>
     </div>
   );
