@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import {
+  UserPlus,
+  Users,
+  Truck,
+  PackageSearch,
+} from "lucide-react";
 
 export default function PharmacyDashboard() {
   const router = useRouter();
@@ -20,58 +26,41 @@ export default function PharmacyDashboard() {
       }
 
       const localPharmacy = JSON.parse(stored);
-
       const ref = doc(db, "pharmacies", localPharmacy.id);
       const snap = await getDoc(ref);
 
-      if (!snap.exists()) {
+      if (!snap.exists() || snap.data()?.suspended) {
         localStorage.removeItem("pharmacy");
-        alert("Pharmacy not found");
         router.push("/pharmacy/login");
         return;
       }
 
-      const data = snap.data();
-
-      if (data.suspended === true) {
-        localStorage.removeItem("pharmacy");
-        alert("This pharmacy is suspended. Access denied.");
-        router.push("/pharmacy/login");
-        return;
-      }
-
-      setPharmacy({ id: snap.id, ...data });
+      setPharmacy({ id: snap.id, ...snap.data() });
       setLoading(false);
     };
 
     loadPharmacy();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("pharmacy");
-    router.push("/pharmacy/login");
-  };
-
   if (loading) {
-    return <p className="mt-10 text-center">Loading...</p>;
+    return <p className="mt-16 text-center text-gray-500">Loading dashboard…</p>;
   }
 
-  if (!pharmacy) return null;
-
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      
-      {/* 🔙 NAV */}
-      <div className="mb-6 flex items-center gap-4 text-sm">
+    <div className="max-w-6xl mx-auto px-6 py-10">
+
+      {/* TOP NAV */}
+      <div className="flex items-center gap-4 text-sm mb-10">
         <button
-          onClick={handleLogout}
+          onClick={() => {
+            localStorage.removeItem("pharmacy");
+            router.push("/pharmacy/login");
+          }}
           className="text-blue-600 hover:underline"
         >
           ← Back to menu
         </button>
-
-        <span className="text-gray-400">|</span>
-
+        <span className="text-gray-300">|</span>
         <button
           onClick={() => router.push("/dashboard")}
           className="text-blue-600 hover:underline"
@@ -80,54 +69,97 @@ export default function PharmacyDashboard() {
         </button>
       </div>
 
-      <h1 className="text-2xl font-bold mb-6">
+      {/* TITLE */}
+      <h1 className="text-3xl font-bold mb-2">
         Welcome, {pharmacy.name}
       </h1>
+      <p className="text-gray-500 mb-10">
+        Manage clients and deliveries from your pharmacy dashboard.
+      </p>
 
-      {/* ✅ MENU COMPLETO DE FARMACIA */}
-      <div className="space-y-4">
+      {/* CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
 
-        {/* CREATE CLIENT */}
-        <button
+        {/* CARD */}
+        <DashboardCard
+          title="Create Client"
+          description="Register a new client quickly and easily."
+          icon={<UserPlus size={28} />}
+          gradient="from-blue-500 to-indigo-500"
           onClick={() =>
             router.push(`/pharmacy/${pharmacy.id}/create-client`)
           }
-          className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition"
-        >
-          Create Client
-        </button>
+        />
 
-        {/* MANAGE CLIENTS */}
-        <button
+        <DashboardCard
+          title="Manage Clients"
+          description="View, edit or remove existing clients."
+          icon={<Users size={28} />}
+          gradient="from-indigo-500 to-violet-500"
           onClick={() =>
             router.push(`/pharmacy/${pharmacy.id}/clients`)
           }
-          className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition"
-        >
-          Manage Clients
-        </button>
+        />
 
-        {/* CREATE DELIVERY */}
-        <button
+        <DashboardCard
+          title="Create Delivery"
+          description="Create a new delivery order."
+          icon={<Truck size={28} />}
+          gradient="from-purple-500 to-fuchsia-500"
           onClick={() =>
             router.push(`/pharmacy/${pharmacy.id}/create-delivery`)
           }
-          className="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition"
-        >
-          Create Delivery
-        </button>
+        />
 
-        {/* VIEW DELIVERIES */}
-        <button
+        <DashboardCard
+          title="View Deliveries"
+          description="Track and manage all deliveries."
+          icon={<PackageSearch size={28} />}
+          gradient="from-gray-700 to-gray-900"
           onClick={() =>
             router.push(`/pharmacy/${pharmacy.id}/deliveries`)
           }
-          className="w-full bg-gray-700 text-white py-3 rounded-lg hover:bg-gray-800 transition"
-        >
-          View Deliveries
-        </button>
+        />
 
       </div>
+    </div>
+  );
+}
+
+/* 🧩 CARD COMPONENT */
+function DashboardCard({
+  title,
+  description,
+  icon,
+  gradient,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  gradient: string;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className="group cursor-pointer rounded-2xl border border-gray-200 bg-white p-6
+      transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+    >
+      <div
+        className={`mb-4 inline-flex items-center justify-center rounded-xl
+        bg-gradient-to-br ${gradient} p-3 text-white`}
+      >
+        {icon}
+      </div>
+
+      <h2 className="text-xl font-semibold mb-1">
+        {title}
+      </h2>
+
+      <p className="text-gray-500 text-sm">
+        {description}
+      </p>
     </div>
   );
 }

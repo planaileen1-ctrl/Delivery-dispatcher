@@ -31,30 +31,20 @@ type Driver = {
 export default function CreateDeliveryDriverPage() {
   const router = useRouter();
 
+  const generatePin = () =>
+    Math.floor(1000 + Math.random() * 9000).toString();
+
   const [form, setForm] = useState({
     name: "",
     address: "",
     phone: "",
     employeeCode: "",
-    pin: "",
+    pin: generatePin(),
   });
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  /* =======================
-     Generate PIN
-  ======================= */
-  useEffect(() => {
-    const generatePin = () =>
-      Math.floor(1000 + Math.random() * 9000).toString();
-
-    setForm((prev) => ({
-      ...prev,
-      pin: generatePin(),
-    }));
-  }, []);
 
   /* =======================
      Load drivers list
@@ -66,14 +56,10 @@ export default function CreateDeliveryDriverPage() {
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const list: Driver[] = snapshot.docs.map((doc) => {
-        const data = doc.data() as Omit<Driver, "id">;
-
-        return {
-          id: doc.id,
-          ...data,
-        };
-      });
+      const list: Driver[] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<Driver, "id">),
+      }));
 
       setDrivers(list);
     });
@@ -93,36 +79,30 @@ export default function CreateDeliveryDriverPage() {
 
   const handleSubmit = async () => {
     setError("");
-
-    if (!form.name || !form.address || !form.phone || !form.employeeCode) {
-      setError("All fields are required.");
-      return;
-    }
+    setLoading(true);
 
     try {
-      setLoading(true);
-
       await addDoc(collection(db, "deliveryDrivers"), {
-        name: form.name,
-        address: form.address,
-        phone: form.phone,
-        employeeCode: form.employeeCode,
+        name: form.name || "Unnamed Driver",
+        address: form.address || "",
+        phone: form.phone || "",
+        employeeCode: form.employeeCode || "",
         pin: form.pin,
         active: true,
         createdAt: serverTimestamp(),
       });
 
-      // regenerate PIN after save
+      // Reset form for next driver
       setForm({
         name: "",
         address: "",
         phone: "",
         employeeCode: "",
-        pin: Math.floor(1000 + Math.random() * 9000).toString(),
+        pin: generatePin(),
       });
     } catch (err) {
-      console.error(err);
-      setError("Error creating delivery driver");
+      console.error("Firestore error:", err);
+      setError("Error saving driver. Check Firestore rules.");
     } finally {
       setLoading(false);
     }
@@ -135,9 +115,7 @@ export default function CreateDeliveryDriverPage() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* =======================
-            FORM
-        ======================= */}
+        {/* FORM */}
         <div className="bg-white p-8 rounded-xl shadow">
           <button
             onClick={() => router.back()}
@@ -146,12 +124,16 @@ export default function CreateDeliveryDriverPage() {
             ← Back
           </button>
 
-          <h1 className="text-2xl font-bold mb-6">Create Delivery Driver</h1>
+          <h1 className="text-2xl font-bold mb-6">
+            Create Delivery Driver
+          </h1>
 
           {["name", "address", "phone", "employeeCode"].map((field) => (
             <div key={field} className="mb-4">
               <label className="block text-sm font-medium capitalize">
-                {field.replace("employeeCode", "Employee Code")}
+                {field === "employeeCode"
+                  ? "Employee Code"
+                  : field}
               </label>
               <input
                 name={field}
@@ -175,7 +157,9 @@ export default function CreateDeliveryDriverPage() {
           </div>
 
           {error && (
-            <p className="text-red-600 text-sm mb-4">{error}</p>
+            <p className="text-red-600 text-sm mb-4">
+              {error}
+            </p>
           )}
 
           <button
@@ -187,9 +171,7 @@ export default function CreateDeliveryDriverPage() {
           </button>
         </div>
 
-        {/* =======================
-            LIST
-        ======================= */}
+        {/* LIST */}
         <div className="bg-white p-8 rounded-xl shadow">
           <h2 className="text-xl font-bold mb-4">
             Delivery Drivers ({drivers.length})
@@ -207,7 +189,9 @@ export default function CreateDeliveryDriverPage() {
                   className="border rounded-lg p-4 flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-medium">{driver.name}</p>
+                    <p className="font-medium">
+                      {driver.name}
+                    </p>
                     <p className="text-xs text-gray-500">
                       {driver.phone || "No phone"}
                     </p>

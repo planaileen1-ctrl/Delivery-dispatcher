@@ -47,7 +47,10 @@ export default function DriverDashboard() {
             id: d.id,
             ...(d.data() as Omit<Delivery, "id">),
           }))
-          .filter((d) => d.status !== "delivered")
+          // ❗ solo se elimina cuando ya volvió a farmacia
+          .filter(
+            (d) => d.status !== "returned_to_pharmacy"
+          )
           .map(async (delivery) => {
             try {
               const clientSnap = await getDoc(
@@ -75,25 +78,32 @@ export default function DriverDashboard() {
     return () => unsub();
   }, [router]);
 
-  const updateStatus = async (id: string, status: string) => {
-    await updateDoc(doc(db, "deliveries", id), { status });
+  const updateStatus = async (
+    id: string,
+    status: string
+  ) => {
+    await updateDoc(doc(db, "deliveries", id), {
+      status,
+    });
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">
+    <div className="p-6 max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">
         My Deliveries
       </h1>
 
       {deliveries.length === 0 && (
-        <p>No deliveries assigned.</p>
+        <p className="text-gray-500">
+          No deliveries assigned.
+        </p>
       )}
 
       <div className="space-y-4">
         {deliveries.map((d) => (
           <div
             key={d.id}
-            className="border rounded p-4 bg-white shadow"
+            className="border rounded-lg p-4 bg-white shadow"
           >
             <p>
               <strong>Client:</strong>{" "}
@@ -112,8 +122,8 @@ export default function DriverDashboard() {
               {d.deliveryAddress}
             </p>
 
-            <p className="mt-2">
-              <strong>Pump Codes:</strong>
+            <p className="mt-2 font-semibold">
+              Pump Codes:
             </p>
             <ul className="list-disc ml-5">
               {d.pumpCodes?.map((p, i) => (
@@ -122,14 +132,20 @@ export default function DriverDashboard() {
             </ul>
 
             <p className="mt-2">
-              <strong>Status:</strong> {d.status}
+              <strong>Status:</strong>{" "}
+              {d.status}
             </p>
 
-            <div className="flex gap-2 mt-4">
+            {/* 🔘 ACTIONS */}
+            <div className="flex gap-2 mt-4 flex-wrap">
+
               {d.status === "created" && (
                 <button
                   onClick={() =>
-                    updateStatus(d.id, "picked_up")
+                    updateStatus(
+                      d.id,
+                      "picked_up"
+                    )
                   }
                   className="bg-blue-500 text-white px-3 py-1 rounded"
                 >
@@ -140,7 +156,10 @@ export default function DriverDashboard() {
               {d.status === "picked_up" && (
                 <button
                   onClick={() =>
-                    updateStatus(d.id, "on_route")
+                    updateStatus(
+                      d.id,
+                      "on_route"
+                    )
                   }
                   className="bg-orange-500 text-white px-3 py-1 rounded"
                 >
@@ -151,13 +170,75 @@ export default function DriverDashboard() {
               {d.status === "on_route" && (
                 <button
                   onClick={() =>
-                    updateStatus(d.id, "delivered")
+                    updateStatus(
+                      d.id,
+                      "delivered"
+                    )
                   }
                   className="bg-green-600 text-white px-3 py-1 rounded"
                 >
                   Delivered
                 </button>
               )}
+
+              {/* 🔁 RETURN FLOW */}
+
+              {d.status === "delivered" && (
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      d.id,
+                      "awaiting_return"
+                    )
+                  }
+                  className="bg-purple-500 text-white px-3 py-1 rounded"
+                >
+                  Await Return
+                </button>
+              )}
+
+              {d.status === "awaiting_return" && (
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      d.id,
+                      "return_picked_up"
+                    )
+                  }
+                  className="bg-indigo-500 text-white px-3 py-1 rounded"
+                >
+                  Pick Up Empty Pump
+                </button>
+              )}
+
+              {d.status === "return_picked_up" && (
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      d.id,
+                      "return_on_route"
+                    )
+                  }
+                  className="bg-yellow-500 text-black px-3 py-1 rounded"
+                >
+                  Returning to Pharmacy
+                </button>
+              )}
+
+              {d.status === "return_on_route" && (
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      d.id,
+                      "returned_to_pharmacy"
+                    )
+                  }
+                  className="bg-gray-800 text-white px-3 py-1 rounded"
+                >
+                  Returned
+                </button>
+              )}
+
             </div>
           </div>
         ))}

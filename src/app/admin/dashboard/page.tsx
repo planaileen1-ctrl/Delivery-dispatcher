@@ -39,7 +39,7 @@ export default function AdminDashboard() {
       description: "Register new clients who will receive and approve deliveries.",
       color: "border-purple-600 bg-purple-50",
       titleColor: "text-purple-700",
-      path: "/admin/clients/create",
+      path: "/client/clients/create",
     },
   ];
 

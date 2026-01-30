@@ -36,6 +36,7 @@ export default function DashboardPage() {
         "Receive pump deliveries and approve or confirm received orders.",
       color: "border-purple-600 bg-purple-50",
       titleColor: "text-purple-700",
+      path: "/client/login"
     },
   ];
 
