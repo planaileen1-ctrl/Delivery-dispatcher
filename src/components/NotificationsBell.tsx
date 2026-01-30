@@ -14,6 +14,9 @@ import { db } from "@/lib/firebase";
 import { Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+/* =======================
+   Types
+======================= */
 type Notification = {
   id: string;
   title: string;
@@ -36,7 +39,7 @@ export default function NotificationsBell({
 
   const router = useRouter();
 
-  // 🔊 audio refs
+  /* 🔊 Audio refs */
   const normalSound = useRef<HTMLAudioElement | null>(
     null
   );
@@ -44,13 +47,15 @@ export default function NotificationsBell({
     null
   );
 
-  // 🧠 keep previous count
+  /* 🧠 Previous count to detect new */
   const prevCount = useRef(0);
 
   /* =======================
-     LOAD SOUNDS
+     LOAD SOUNDS (SSR SAFE)
   ======================= */
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     normalSound.current = new Audio(
       "/sounds/notification.mp3"
     );
@@ -78,13 +83,13 @@ export default function NotificationsBell({
         ...(d.data() as any),
       }));
 
-      // 🔔 PLAY SOUND IF NEW
+      // 🔔 PLAY SOUND IF NEW NOTIFICATION
       if (list.length > prevCount.current) {
         const newest = list[0];
 
         if (
-          newest.message
-            .toLowerCase()
+          newest?.message
+            ?.toLowerCase()
             .includes("return")
         ) {
           returnSound.current?.play();
@@ -100,6 +105,7 @@ export default function NotificationsBell({
     return () => unsub();
   }, [userId, role]);
 
+  /* 🔴 UNREAD COUNT */
   const unreadCount = notifications.filter(
     (n) => !n.read
   ).length;
@@ -141,6 +147,7 @@ export default function NotificationsBell({
       <button
         onClick={() => setOpen(!open)}
         className="relative"
+        aria-label="Notifications"
       >
         <Bell size={22} />
 
