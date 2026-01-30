@@ -28,7 +28,7 @@ export default function AdminDashboard() {
       path: "/admin/drivers/create",
     },
     {
-      title: "Manage Delivery Drivers", // ✅ NUEVA
+      title: "Manage Delivery Drivers",
       description: "View, edit, suspend and update delivery drivers.",
       color: "border-teal-600 bg-teal-50",
       titleColor: "text-teal-700",
@@ -63,7 +63,9 @@ export default function AdminDashboard() {
             onClick={() => router.push(action.path)}
             className={`border-l-8 ${action.color} rounded-xl p-6 shadow-sm hover:shadow-lg transition cursor-pointer`}
           >
-            <h2 className={`text-xl font-semibold mb-3 ${action.titleColor}`}>
+            <h2
+              className={`text-xl font-semibold mb-3 ${action.titleColor}`}
+            >
               {action.title}
             </h2>
 

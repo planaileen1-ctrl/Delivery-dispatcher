@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-// 🔔 Notifications
-import NotificationsBell from "../../../../components/NotificationsBell";
-
-
+// 🔔 Notifications (FIXED IMPORT)
+import NotificationsBell from "@/components/NotificationsBell";
 
 // ICONS
 import {
@@ -19,6 +17,9 @@ import {
   CalendarSearch,
 } from "lucide-react";
 
+/* =======================
+   Types
+======================= */
 type Pharmacy = {
   id: string;
   name: string;
@@ -27,7 +28,8 @@ type Pharmacy = {
 
 export default function PharmacyDashboard() {
   const router = useRouter();
-  const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
+  const [pharmacy, setPharmacy] =
+    useState<Pharmacy | null>(null);
   const [loading, setLoading] = useState(true);
 
   /* =======================
@@ -36,7 +38,8 @@ export default function PharmacyDashboard() {
   useEffect(() => {
     const loadPharmacy = async () => {
       try {
-        const stored = localStorage.getItem("pharmacy");
+        const stored =
+          localStorage.getItem("pharmacy");
 
         if (!stored) {
           router.replace("/pharmacy/login");
@@ -51,7 +54,11 @@ export default function PharmacyDashboard() {
           return;
         }
 
-        const ref = doc(db, "pharmacies", localPharmacy.id);
+        const ref = doc(
+          db,
+          "pharmacies",
+          localPharmacy.id
+        );
         const snap = await getDoc(ref);
 
         if (!snap.exists() || snap.data()?.suspended) {
@@ -66,7 +73,10 @@ export default function PharmacyDashboard() {
           suspended: snap.data().suspended,
         });
       } catch (err) {
-        console.error("Error loading pharmacy:", err);
+        console.error(
+          "Error loading pharmacy:",
+          err
+        );
         localStorage.removeItem("pharmacy");
         router.replace("/pharmacy/login");
       } finally {
@@ -110,7 +120,9 @@ export default function PharmacyDashboard() {
           <span className="text-gray-300">|</span>
 
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() =>
+              router.push("/dashboard")
+            }
             className="text-blue-600 hover:underline"
           >
             Back to main dashboard
@@ -130,7 +142,9 @@ export default function PharmacyDashboard() {
       </h1>
 
       <p className="text-gray-500 mb-10">
-        Manage clients, deliveries, returns and pump traceability from your pharmacy dashboard.
+        Manage clients, deliveries, returns and
+        pump traceability from your pharmacy
+        dashboard.
       </p>
 
       {/* CARDS */}
@@ -142,7 +156,9 @@ export default function PharmacyDashboard() {
           icon={<UserPlus size={28} />}
           gradient="from-blue-500 to-indigo-500"
           onClick={() =>
-            router.push(`/pharmacy/${pharmacy.id}/create-client`)
+            router.push(
+              `/pharmacy/${pharmacy.id}/create-client`
+            )
           }
         />
 
@@ -152,7 +168,9 @@ export default function PharmacyDashboard() {
           icon={<Users size={28} />}
           gradient="from-indigo-500 to-violet-500"
           onClick={() =>
-            router.push(`/pharmacy/${pharmacy.id}/clients`)
+            router.push(
+              `/pharmacy/${pharmacy.id}/clients`
+            )
           }
         />
 
@@ -162,7 +180,9 @@ export default function PharmacyDashboard() {
           icon={<Truck size={28} />}
           gradient="from-purple-500 to-fuchsia-500"
           onClick={() =>
-            router.push(`/pharmacy/${pharmacy.id}/create-delivery`)
+            router.push(
+              `/pharmacy/${pharmacy.id}/create-delivery`
+            )
           }
         />
 
@@ -172,7 +192,9 @@ export default function PharmacyDashboard() {
           icon={<PackageSearch size={28} />}
           gradient="from-gray-700 to-gray-900"
           onClick={() =>
-            router.push(`/pharmacy/${pharmacy.id}/history`)
+            router.push(
+              `/pharmacy/${pharmacy.id}/history`
+            )
           }
         />
 
@@ -194,7 +216,9 @@ export default function PharmacyDashboard() {
           icon={<CalendarSearch size={28} />}
           gradient="from-emerald-500 to-teal-600"
           onClick={() =>
-            router.push(`/pharmacy/${pharmacy.id}/pumps`)
+            router.push(
+              `/pharmacy/${pharmacy.id}/pumps`
+            )
           }
         />
 
