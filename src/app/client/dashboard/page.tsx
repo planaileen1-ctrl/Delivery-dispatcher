@@ -22,10 +22,13 @@ type DeliveryUI = {
   driverName: string;
   createdAt?: Timestamp;
   receivedAt?: Timestamp;
+  type?: string;
+  originalDeliveryId?: string;
 };
 
 export default function ClientDashboard() {
   const [deliveries, setDeliveries] = useState<DeliveryUI[]>([]);
+  const [returnMap, setReturnMap] = useState<Record<string, boolean>>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -44,47 +47,40 @@ export default function ClientDashboard() {
 
     const unsub = onSnapshot(q, async (snap) => {
       const result: DeliveryUI[] = [];
+      const returns: Record<string, boolean> = {};
 
+      // 🔁 first pass: detect returns
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.type === "return" && data.originalDeliveryId) {
+          returns[data.originalDeliveryId] = true;
+        }
+      });
+
+      // 📦 second pass: build UI list
       for (const d of snap.docs) {
         const delivery = d.data();
 
-        // 🔎 farmacia
+        // ❌ hide return deliveries from main list
+        if (delivery.type === "return") continue;
+
         let pharmacyName = "—";
         if (delivery.pharmacyId) {
-          const phRef = doc(
-            db,
-            "pharmacies",
-            delivery.pharmacyId
+          const phSnap = await getDoc(
+            doc(db, "pharmacies", delivery.pharmacyId)
           );
-          const phSnap = await getDoc(phRef);
-
           if (phSnap.exists()) {
             pharmacyName = phSnap.data().name;
-          } else {
-            console.warn(
-              "Pharmacy not found:",
-              delivery.pharmacyId
-            );
           }
         }
 
-        // 🔎 conductor
         let driverName = "—";
         if (delivery.driverId) {
-          const drRef = doc(
-            db,
-            "deliveryDrivers",
-            delivery.driverId
+          const drSnap = await getDoc(
+            doc(db, "deliveryDrivers", delivery.driverId)
           );
-          const drSnap = await getDoc(drRef);
-
           if (drSnap.exists()) {
             driverName = drSnap.data().name;
-          } else {
-            console.warn(
-              "Driver not found:",
-              delivery.driverId
-            );
           }
         }
 
@@ -96,23 +92,23 @@ export default function ClientDashboard() {
           receivedAt: delivery.receivedAt,
           pharmacyName,
           driverName,
+          type: delivery.type,
         });
       }
 
+      setReturnMap(returns);
       setDeliveries(result);
     });
 
     return () => unsub();
   }, [router]);
 
+  /* ✅ CLIENT CONFIRMS RECEIPT */
   const confirmReceived = async (deliveryId: string) => {
-    await updateDoc(
-      doc(db, "deliveries", deliveryId),
-      {
-        status: "received_by_client",
-        receivedAt: new Date(),
-      }
-    );
+    await updateDoc(doc(db, "deliveries", deliveryId), {
+      status: "received_by_client",
+      receivedAt: new Date(),
+    });
   };
 
   return (
@@ -164,18 +160,14 @@ export default function ClientDashboard() {
             {d.createdAt && (
               <p>
                 <strong>Sent at:</strong>{" "}
-                {d.createdAt
-                  .toDate()
-                  .toLocaleString()}
+                {d.createdAt.toDate().toLocaleString()}
               </p>
             )}
 
             {d.receivedAt && (
               <p>
                 <strong>Received at:</strong>{" "}
-                {d.receivedAt
-                  .toDate()
-                  .toLocaleString()}
+                {d.receivedAt.toDate().toLocaleString()}
               </p>
             )}
 
@@ -184,20 +176,39 @@ export default function ClientDashboard() {
               {d.status}
             </p>
 
+            {/* STEP 1 */}
             {d.status === "delivered" && (
               <button
-                onClick={() =>
-                  confirmReceived(d.id)
-                }
+                onClick={() => confirmReceived(d.id)}
                 className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
               >
                 I received the pumps
               </button>
             )}
 
-            {d.status === "received_by_client" && (
-              <p className="mt-4 text-green-700 font-semibold">
-                ✔ Reception confirmed
+            {/* STEP 2 – ONLY IF NO RETURN EXISTS */}
+            {d.status === "received_by_client" &&
+              !returnMap[d.id] && (
+                <div className="mt-4 p-4 border border-yellow-300 bg-yellow-50 rounded-lg">
+                  <p className="font-semibold text-yellow-800 mb-2">
+                    Need to return the pumps?
+                  </p>
+
+                  <button
+                    onClick={() =>
+                      router.push(`/client/return/${d.id}`)
+                    }
+                    className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700"
+                  >
+                    Return pumps to pharmacy
+                  </button>
+                </div>
+              )}
+
+            {/* ✅ RETURN ALREADY CREATED */}
+            {returnMap[d.id] && (
+              <p className="mt-4 text-yellow-700 font-semibold">
+                🔁 Return already created
               </p>
             )}
           </div>

@@ -12,14 +12,16 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-type Delivery = {
+type DeliveryUI = {
   id: string;
   clientName: string;
   driverName: string;
   deliveryAddress: string;
   pumpCodes: string[];
   status: string;
-  createdAt: any;
+  createdAt?: Date;
+  returnedAt?: Date;
+  returnDriverName?: string;
 };
 
 export default function DeliveryHistoryPage() {
@@ -27,10 +29,10 @@ export default function DeliveryHistoryPage() {
   const router = useRouter();
 
   const [pharmacyName, setPharmacyName] = useState("");
-  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [deliveries, setDeliveries] = useState<DeliveryUI[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* 🔹 LOAD PHARMACY NAME */
+  /* 🔹 PHARMACY */
   useEffect(() => {
     const loadPharmacy = async () => {
       const snap = await getDoc(doc(db, "pharmacies", pharmacyId as string));
@@ -39,9 +41,9 @@ export default function DeliveryHistoryPage() {
     loadPharmacy();
   }, [pharmacyId]);
 
-  /* 🔹 LOAD DELIVERIES */
+  /* 🔹 LOAD HISTORY */
   useEffect(() => {
-    const loadDeliveries = async () => {
+    const load = async () => {
       const q = query(
         collection(db, "deliveries"),
         where("pharmacyId", "==", pharmacyId)
@@ -49,17 +51,24 @@ export default function DeliveryHistoryPage() {
 
       const snap = await getDocs(q);
 
-      const result: Delivery[] = [];
+      const base: Record<string, DeliveryUI> = {};
+      const returns: any[] = [];
 
+      // 1️⃣ split deliveries vs returns
       for (const d of snap.docs) {
         const data = d.data();
+
+        if (data.type === "return") {
+          returns.push({ id: d.id, ...data });
+          continue;
+        }
 
         const clientSnap = await getDoc(doc(db, "clients", data.clientId));
         const driverSnap = await getDoc(
           doc(db, "deliveryDrivers", data.driverId)
         );
 
-        result.push({
+        base[d.id] = {
           id: d.id,
           clientName: clientSnap.exists()
             ? clientSnap.data().name
@@ -71,14 +80,30 @@ export default function DeliveryHistoryPage() {
           pumpCodes: data.pumpCodes || [],
           status: data.status,
           createdAt: data.createdAt?.toDate(),
-        });
+        };
       }
 
-      setDeliveries(result);
+      // 2️⃣ attach returns to original delivery
+      for (const r of returns) {
+        const originalId = r.originalDeliveryId;
+        if (!originalId || !base[originalId]) continue;
+
+        const returnDriverSnap = await getDoc(
+          doc(db, "deliveryDrivers", r.driverId)
+        );
+
+        base[originalId].status = "returned";
+        base[originalId].returnedAt = r.returnedAt?.toDate();
+        base[originalId].returnDriverName = returnDriverSnap.exists()
+          ? returnDriverSnap.data().name
+          : "Unknown";
+      }
+
+      setDeliveries(Object.values(base));
       setLoading(false);
     };
 
-    loadDeliveries();
+    load();
   }, [pharmacyId]);
 
   return (
@@ -128,6 +153,13 @@ export default function DeliveryHistoryPage() {
                   <p className="text-xs text-gray-500 mt-1">
                     Pumps: {d.pumpCodes.join(", ")}
                   </p>
+
+                  {d.status === "returned" && (
+                    <p className="text-sm text-yellow-700 mt-2">
+                      🔁 Returned by {d.returnDriverName} on{" "}
+                      {d.returnedAt?.toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 <div className="text-right">
@@ -136,9 +168,11 @@ export default function DeliveryHistoryPage() {
                   </p>
                   <span
                     className={`inline-block mt-2 px-3 py-1 text-xs rounded-full ${
-                      d.status === "delivered"
+                      d.status === "returned"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : d.status === "delivered"
                         ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
+                        : "bg-gray-100 text-gray-700"
                     }`}
                   >
                     {d.status.toUpperCase()}

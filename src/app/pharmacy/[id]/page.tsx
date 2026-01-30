@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
+// ✅ ICONS (CalendarSearch AÑADIDO)
 import {
   UserPlus,
   Users,
   Truck,
   PackageSearch,
+  CalendarSearch,
 } from "lucide-react";
 
 export default function PharmacyDashboard() {
@@ -43,7 +46,11 @@ export default function PharmacyDashboard() {
   }, [router]);
 
   if (loading) {
-    return <p className="mt-16 text-center text-gray-500">Loading dashboard…</p>;
+    return (
+      <p className="mt-16 text-center text-gray-500">
+        Loading dashboard…
+      </p>
+    );
   }
 
   return (
@@ -60,7 +67,9 @@ export default function PharmacyDashboard() {
         >
           ← Back to menu
         </button>
+
         <span className="text-gray-300">|</span>
+
         <button
           onClick={() => router.push("/dashboard")}
           className="text-blue-600 hover:underline"
@@ -73,6 +82,7 @@ export default function PharmacyDashboard() {
       <h1 className="text-3xl font-bold mb-2">
         Welcome, {pharmacy.name}
       </h1>
+
       <p className="text-gray-500 mb-10">
         Manage clients and deliveries from your pharmacy dashboard.
       </p>
@@ -80,7 +90,6 @@ export default function PharmacyDashboard() {
       {/* CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
 
-        {/* CARD */}
         <DashboardCard
           title="Create Client"
           description="Register a new client quickly and easily."
@@ -117,7 +126,18 @@ export default function PharmacyDashboard() {
           icon={<PackageSearch size={28} />}
           gradient="from-gray-700 to-gray-900"
           onClick={() =>
-            router.push(`/pharmacy/${pharmacy.id}/deliveries`)
+            router.push(`/pharmacy/${pharmacy.id}/history`)
+          }
+        />
+
+        {/* ✅ NUEVA TARJETA DE TRAZABILIDAD */}
+        <DashboardCard
+          title="Pump Traceability"
+          description="Track pumps by date, driver and full history."
+          icon={<CalendarSearch size={28} />}
+          gradient="from-emerald-500 to-teal-600"
+          onClick={() =>
+            router.push(`/pharmacy/${pharmacy.id}/pumps`)
           }
         />
 
