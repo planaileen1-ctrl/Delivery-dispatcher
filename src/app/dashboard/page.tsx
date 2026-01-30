@@ -1,6 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import {
+  ShieldCheck,
+  Building2,
+  Truck,
+  User,
+} from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -9,81 +15,94 @@ export default function DashboardPage() {
     {
       title: "Administrator",
       description:
-        "Full control over companies, pharmacies, clients, and system security.",
-      color: "md:border-blue-600 bg-blue-50",
-      titleColor: "text-blue-700",
+        "Control pharmacies, users and system configuration.",
+      icon: <ShieldCheck size={26} />,
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
       path: "/admin/login",
     },
     {
-      title: "Pharmacy Staff",
+      title: "Pharmacy",
       description:
-        "Register medicines, manage inventory, and prepare safe deliveries.",
-      color: "md:border-emerald-600 bg-emerald-50",
-      titleColor: "text-emerald-700",
+        "Manage pumps, clients and medical deliveries.",
+      icon: <Building2 size={26} />,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
       path: "/pharmacy/login",
     },
     {
       title: "Delivery Driver",
       description:
-        "Deliver medicines securely and update delivery status.",
-      color: "md:border-amber-600 bg-amber-50",
-      titleColor: "text-amber-700",
+        "Deliver pumps and update delivery status.",
+      icon: <Truck size={26} />,
+      color: "text-orange-600",
+      bg: "bg-orange-50",
       path: "/delivery-driver/login",
     },
     {
       title: "Client",
       description:
-        "Receive pump deliveries and approve or confirm received orders.",
-      color: "md:border-purple-600 bg-purple-50",
-      titleColor: "text-purple-700",
+        "Receive pumps and manage returns.",
+      icon: <User size={26} />,
+      color: "text-purple-600",
+      bg: "bg-purple-50",
       path: "/client/login",
     },
   ];
 
   return (
-    <div className="px-4 sm:px-6">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-8 text-gray-800">
-        Select your role
-      </h1>
+    <div className="min-h-screen bg-gradient-to-b from-[#f5f5f7] via-[#fafafa] to-white px-6 py-16">
+      {/* HEADER */}
+      <div className="max-w-6xl mx-auto mb-14 text-center md:text-left">
+        <h1 className="text-4xl font-semibold tracking-tight text-gray-900">
+          Medical Delivery System
+        </h1>
+        <p className="mt-3 text-gray-600 max-w-xl">
+          Secure pump logistics, real-time traceability and safe medical deliveries.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* CARDS */}
+      <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
         {roles.map((role) => (
           <div
             key={role.title}
-            onClick={() => role.path && router.push(role.path)}
-            className={`
-              group cursor-pointer rounded-2xl p-6
-              border border-gray-200
-              md:border-l-8 ${role.color}
-              bg-white
-              shadow-sm hover:shadow-xl
-              transition-all duration-300
-              active:scale-[0.98]
-            `}
+            onClick={() => router.push(role.path)}
+            className="group cursor-pointer rounded-3xl bg-white
+            shadow-[0_10px_30px_rgba(0,0,0,0.06)]
+            hover:shadow-[0_20px_40px_rgba(0,0,0,0.08)]
+            transition-all duration-300 overflow-hidden"
           >
-            {/* TOP COLOR INDICATOR (MOBILE FRIENDLY) */}
-            <div
-              className={`h-1 w-12 mb-4 rounded-full ${role.titleColor.replace(
-                "text",
-                "bg"
-              )}`}
-            />
+            {/* TOP BAR */}
+            <div className={`h-1 ${role.bg}`} />
 
-            <h2
-              className={`text-lg sm:text-xl font-semibold mb-2 ${role.titleColor}`}
-            >
-              {role.title}
-            </h2>
+            <div className="p-6 flex flex-col h-full">
+              {/* ICON */}
+              <div
+                className={`w-12 h-12 rounded-xl flex items-center justify-center mb-5 ${role.bg} ${role.color}`}
+              >
+                {role.icon}
+              </div>
 
-            <p className="text-gray-700 text-sm leading-relaxed">
-              {role.description}
-            </p>
+              {/* TEXT */}
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                {role.title}
+              </h2>
 
-            {role.path && (
-              <span className="mt-4 inline-block text-sm font-medium text-gray-600 group-hover:text-gray-900">
-                Tap to continue →
+              <p className="text-sm text-gray-600 flex-1">
+                {role.description}
+              </p>
+
+              {/* CTA */}
+              <span
+                className={`mt-6 inline-flex items-center gap-2 text-sm font-medium ${role.color}`}
+              >
+                Enter
+                <span className="transition-transform group-hover:translate-x-1">
+                  →
+                </span>
               </span>
-            )}
+            </div>
           </div>
         ))}
       </div>
