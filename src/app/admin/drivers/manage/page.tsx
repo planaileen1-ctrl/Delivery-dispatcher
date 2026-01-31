@@ -7,9 +7,16 @@ import {
   onSnapshot,
   updateDoc,
   doc,
+  deleteDoc,
+  query,
+  where,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+/* =======================
+   Types
+======================= */
 type Driver = {
   id: string;
   name: string;
@@ -20,6 +27,16 @@ type Driver = {
   active: boolean;
 };
 
+type Trip = {
+  id: string;
+  from?: string;
+  to?: string;
+  createdAt: Timestamp;
+};
+
+/* =======================
+   Page
+======================= */
 export default function ManageDriversPage() {
   const router = useRouter();
 
@@ -27,6 +44,15 @@ export default function ManageDriversPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Driver>>({});
 
+  const [historyDriver, setHistoryDriver] = useState<Driver | null>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
+
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  /* =======================
+     Load drivers
+  ======================= */
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "deliveryDrivers"), (snapshot) => {
       const list: Driver[] = snapshot.docs.map((d) => ({
@@ -39,6 +65,9 @@ export default function ManageDriversPage() {
     return () => unsub();
   }, []);
 
+  /* =======================
+     Edit
+  ======================= */
   const startEdit = (driver: Driver) => {
     setEditingId(driver.id);
     setForm(driver);
@@ -60,10 +89,54 @@ export default function ManageDriversPage() {
     setForm({});
   };
 
+  /* =======================
+     Delete
+  ======================= */
+  const deleteDriver = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this driver?")) return;
+    await deleteDoc(doc(db, "deliveryDrivers", id));
+  };
+
+  /* =======================
+     Load trips (RANGE)
+  ======================= */
+  const loadTrips = (driver: Driver) => {
+    setHistoryDriver(driver);
+
+    let q = query(
+      collection(db, "deliveryTrips"),
+      where("driverId", "==", driver.id)
+    );
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      q = query(
+        collection(db, "deliveryTrips"),
+        where("driverId", "==", driver.id),
+        where("createdAt", ">=", Timestamp.fromDate(start)),
+        where("createdAt", "<=", Timestamp.fromDate(end))
+      );
+    }
+
+    return onSnapshot(q, (snap) => {
+      const list: Trip[] = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Trip, "id">),
+      }));
+      setTrips(list);
+    });
+  };
+
+  /* =======================
+     UI
+  ======================= */
   return (
     <div className="max-w-5xl mx-auto p-6">
-      
-      {/* 🔙 BACK TO ADMIN DASHBOARD */}
       <button
         onClick={() => router.push("/admin/dashboard")}
         className="mb-6 text-sm text-blue-600 hover:underline"
@@ -92,10 +165,7 @@ export default function ManageDriversPage() {
                         key={field}
                         value={(form as any)[field] || ""}
                         onChange={(e) =>
-                          setForm({
-                            ...form,
-                            [field]: e.target.value,
-                          })
+                          setForm({ ...form, [field]: e.target.value })
                         }
                         placeholder={field}
                         className="border rounded px-3 py-2"
@@ -116,7 +186,7 @@ export default function ManageDriversPage() {
 
                   <button
                     onClick={saveEdit}
-                    className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
+                    className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                   >
                     Save Changes
                   </button>
@@ -133,18 +203,103 @@ export default function ManageDriversPage() {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => startEdit(driver)}
-                    className="text-blue-600 text-sm hover:underline"
-                  >
-                    Edit
-                  </button>
+                  <div className="flex gap-3 text-sm">
+                    <button
+                      onClick={() => loadTrips(driver)}
+                      title="View trip history"
+                    >
+                      🔍
+                    </button>
+
+                    <button
+                      onClick={() => startEdit(driver)}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => deleteDriver(driver.id)}
+                      className="text-red-600 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* =======================
+         Trip History Modal
+      ======================= */}
+      {historyDriver && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
+          <div className="bg-white rounded-xl p-6 w-full max-w-xl">
+            <h2 className="text-xl font-bold mb-4">
+              Trip History – {historyDriver.name}
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="border rounded px-3 py-2"
+              />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="border rounded px-3 py-2"
+              />
+            </div>
+
+            <button
+              onClick={() => loadTrips(historyDriver)}
+              className="mb-4 bg-blue-600 text-white px-4 py-2 rounded"
+            >
+              Search
+            </button>
+
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {trips.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No trips found.
+                </p>
+              ) : (
+                trips.map((t) => (
+                  <div
+                    key={t.id}
+                    className="border rounded p-2 text-sm"
+                  >
+                    <p>
+                      {t.from || "Unknown"} → {t.to || "Unknown"}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {t.createdAt.toDate().toLocaleString()}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                setHistoryDriver(null);
+                setTrips([]);
+                setStartDate("");
+                setEndDate("");
+              }}
+              className="mt-4 text-sm text-blue-600 hover:underline"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

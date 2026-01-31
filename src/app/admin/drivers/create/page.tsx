@@ -13,6 +13,12 @@ import {
 import { db } from "@/lib/firebase";
 
 /* =======================
+   CONFIG
+======================= */
+const EMAIL_FUNCTION_URL =
+  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
+
+/* =======================
    Types
 ======================= */
 type Driver = {
@@ -20,6 +26,7 @@ type Driver = {
   name: string;
   address: string;
   phone: string;
+  email: string;
   employeeCode: string;
   pin: string;
   active: boolean;
@@ -38,6 +45,7 @@ export default function CreateDeliveryDriverPage() {
     name: "",
     address: "",
     phone: "",
+    email: "",
     employeeCode: "",
     pin: generatePin(),
   });
@@ -47,7 +55,7 @@ export default function CreateDeliveryDriverPage() {
   const [error, setError] = useState("");
 
   /* =======================
-     Load drivers list
+     Load drivers
   ======================= */
   useEffect(() => {
     const q = query(
@@ -60,7 +68,6 @@ export default function CreateDeliveryDriverPage() {
         id: doc.id,
         ...(doc.data() as Omit<Driver, "id">),
       }));
-
       setDrivers(list);
     });
 
@@ -77,32 +84,83 @@ export default function CreateDeliveryDriverPage() {
     });
   };
 
+  const sendWelcomeEmail = async (driver: {
+    name: string;
+    email: string;
+    pin: string;
+  }) => {
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height:1.6">
+        <h2>Welcome to Delivery Dispatcher</h2>
+        <p>Hello <strong>${driver.name}</strong>,</p>
+
+        <p>Your driver account has been created successfully.</p>
+
+        <p><strong>Access PIN:</strong></p>
+        <h1 style="letter-spacing:4px">${driver.pin}</h1>
+
+        <p>You can now access the delivery system using this PIN.</p>
+
+        <p style="margin-top:30px;font-size:12px;color:#666">
+          If you did not expect this email, please contact your administrator.
+        </p>
+      </div>
+    `;
+
+    await fetch(EMAIL_FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: driver.email,
+        subject: "Your Delivery Driver Access PIN",
+        html,
+      }),
+    });
+  };
+
   const handleSubmit = async () => {
     setError("");
     setLoading(true);
 
     try {
-      await addDoc(collection(db, "deliveryDrivers"), {
+      const driverData = {
         name: form.name || "Unnamed Driver",
         address: form.address || "",
         phone: form.phone || "",
+        email: form.email || "",
         employeeCode: form.employeeCode || "",
         pin: form.pin,
         active: true,
         createdAt: serverTimestamp(),
-      });
+      };
 
-      // Reset form for next driver
+      await addDoc(collection(db, "deliveryDrivers"), driverData);
+
+      // Send email (non-blocking logic-wise)
+      if (form.email) {
+        try {
+          await sendWelcomeEmail({
+            name: driverData.name,
+            email: driverData.email,
+            pin: driverData.pin,
+          });
+        } catch (mailError) {
+          console.error("Email error:", mailError);
+        }
+      }
+
+      // Reset form
       setForm({
         name: "",
         address: "",
         phone: "",
+        email: "",
         employeeCode: "",
         pin: generatePin(),
       });
     } catch (err) {
       console.error("Firestore error:", err);
-      setError("Error saving driver. Check Firestore rules.");
+      setError("Error saving driver.");
     } finally {
       setLoading(false);
     }
@@ -128,7 +186,7 @@ export default function CreateDeliveryDriverPage() {
             Create Delivery Driver
           </h1>
 
-          {["name", "address", "phone", "employeeCode"].map((field) => (
+          {["name", "address", "phone", "email", "employeeCode"].map((field) => (
             <div key={field} className="mb-4">
               <label className="block text-sm font-medium capitalize">
                 {field === "employeeCode"
@@ -137,6 +195,7 @@ export default function CreateDeliveryDriverPage() {
               </label>
               <input
                 name={field}
+                type={field === "email" ? "email" : "text"}
                 value={(form as any)[field]}
                 onChange={handleChange}
                 className="w-full border rounded px-3 py-2"
@@ -144,7 +203,6 @@ export default function CreateDeliveryDriverPage() {
             </div>
           ))}
 
-          {/* PIN */}
           <div className="mb-6">
             <label className="block text-sm font-medium">
               Access PIN (auto-generated)
@@ -167,7 +225,7 @@ export default function CreateDeliveryDriverPage() {
             disabled={loading}
             className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
-            {loading ? "Saving..." : "Create Driver"}
+            {loading ? "Saving..." : "Create Driver & Send Email"}
           </button>
         </div>
 
@@ -189,11 +247,9 @@ export default function CreateDeliveryDriverPage() {
                   className="border rounded-lg p-4 flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-medium">
-                      {driver.name}
-                    </p>
+                    <p className="font-medium">{driver.name}</p>
                     <p className="text-xs text-gray-500">
-                      {driver.phone || "No phone"}
+                      {driver.email || "No email"}
                     </p>
                   </div>
 
