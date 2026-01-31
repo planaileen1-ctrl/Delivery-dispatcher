@@ -1,296 +1,299 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
 import {
   collection,
-  addDoc,
-  serverTimestamp,
-  onSnapshot,
   query,
   where,
-  orderBy,
+  onSnapshot,
+  updateDoc,
   doc,
   getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 
-/* =======================
-   CONFIG
-======================= */
 const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
 /* =======================
-   Types
+   TYPES
 ======================= */
-type Client = {
+type Delivery = {
   id: string;
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-  pin: string;
-};
+  deliveryAddress?: string;
+  pumpCodes: string[];
+  status: string;
 
-type Pharmacy = {
-  id: string;
-  name: string;
-  email: string;
-  whatsapp: string;
+  clientId: string;
+  pharmacyId: string;
+  driverId?: string | null;
+
+  clientName?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+
+  pharmacyName?: string;
+  pharmacyPhone?: string;
+  pharmacyEmail?: string;
 };
 
 /* =======================
-   Page
+   PAGE
 ======================= */
-export default function CreateClientPage() {
+export default function DriverDashboard() {
   const router = useRouter();
-  const params = useParams();
 
-  const pharmacyId =
-    (params.pharmacyId as string) ||
-    (params.id as string);
+  const [available, setAvailable] = useState<Delivery[]>([]);
+  const [assigned, setAssigned] = useState<Delivery[]>([]);
 
-  const generatePin = () =>
-    Math.floor(1000 + Math.random() * 9000).toString();
+  const driverId =
+    typeof window !== "undefined"
+      ? localStorage.getItem("driverId")
+      : null;
 
-  const [form, setForm] = useState({
-    name: "",
-    address: "",
-    phone: "",
-    email: "",
-    pin: generatePin(),
-  });
-
-  const [clients, setClients] = useState<Client[]>([]);
-  const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!driverId) {
+      router.push("/delivery-driver/login");
+    }
+  }, [driverId, router]);
 
   /* =======================
-     Load pharmacy (ONE TIME)
+     EMAIL HELPER
   ======================= */
-  useEffect(() => {
-    if (!pharmacyId) return;
+  const sendEmail = (
+    to?: string | null,
+    subject?: string,
+    text?: string
+  ) => {
+    if (!to || !subject || !text) return;
 
-    const loadPharmacy = async () => {
-      const snap = await getDoc(doc(db, "pharmacies", pharmacyId));
-      if (snap.exists()) {
-        setPharmacy({
-          id: snap.id,
-          ...(snap.data() as Omit<Pharmacy, "id">),
-        });
-      }
-    };
-
-    loadPharmacy();
-  }, [pharmacyId]);
+    fetch(EMAIL_FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, subject, text }),
+    }).catch(() => {});
+  };
 
   /* =======================
-     Load clients
+     ENRICH DELIVERY (FULL)
   ======================= */
-  useEffect(() => {
-    if (!pharmacyId) return;
-
-    const q = query(
-      collection(db, "clients"),
-      where("pharmacyId", "==", pharmacyId),
-      orderBy("createdAt", "desc")
+  const enrichDelivery = async (d: any, id: string) => {
+    const clientSnap = await getDoc(doc(db, "clients", d.clientId));
+    const pharmacySnap = await getDoc(
+      doc(db, "pharmacies", d.pharmacyId)
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list: Client[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Client, "id">),
-      }));
-      setClients(list);
+    return {
+      id,
+      ...d,
+
+      clientName: clientSnap.exists()
+        ? clientSnap.data().name
+        : "Unknown client",
+
+      clientPhone: clientSnap.exists()
+        ? clientSnap.data().phone
+        : "N/A",
+
+      clientEmail: clientSnap.exists()
+        ? clientSnap.data().email
+        : undefined,
+
+      pharmacyName: pharmacySnap.exists()
+        ? pharmacySnap.data().name
+        : "Unknown pharmacy",
+
+      pharmacyPhone: pharmacySnap.exists()
+        ? pharmacySnap.data().whatsapp
+        : "N/A",
+
+      pharmacyEmail: pharmacySnap.exists()
+        ? pharmacySnap.data().email
+        : undefined,
+    } as Delivery;
+  };
+
+  /* =======================
+     AVAILABLE DELIVERIES
+  ======================= */
+  useEffect(() => {
+    const q = query(
+      collection(db, "deliveries"),
+      where("status", "==", "created"),
+      where("driverId", "==", null)
+    );
+
+    const unsub = onSnapshot(q, async (snap) => {
+      const list = await Promise.all(
+        snap.docs.map((d) =>
+          enrichDelivery(d.data(), d.id)
+        )
+      );
+      setAvailable(list);
     });
 
     return () => unsub();
-  }, [pharmacyId]);
+  }, []);
 
   /* =======================
-     Handlers
+     ASSIGNED TO ME
   ======================= */
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
+  useEffect(() => {
+    if (!driverId) return;
+
+    const q = query(
+      collection(db, "deliveries"),
+      where("driverId", "==", driverId)
+    );
+
+    const unsub = onSnapshot(q, async (snap) => {
+      const list = await Promise.all(
+        snap.docs.map((d) =>
+          enrichDelivery(d.data(), d.id)
+        )
+      );
+
+      setAssigned(
+        list.filter(
+          (d) =>
+            d.status === "assigned" ||
+            d.status === "picked_up"
+        )
+      );
     });
+
+    return () => unsub();
+  }, [driverId]);
+
+  /* =======================
+     ACTIONS
+  ======================= */
+  const acceptDelivery = async (d: Delivery) => {
+    await updateDoc(doc(db, "deliveries", d.id), {
+      driverId,
+      status: "assigned",
+      updatedAt: serverTimestamp(),
+    });
+
+    sendEmail(
+      d.clientEmail,
+      "Driver assigned",
+      `Your delivery is on the way.\nAddress: ${d.deliveryAddress}`
+    );
+
+    sendEmail(
+      d.pharmacyEmail,
+      "Delivery accepted",
+      `Driver accepted the delivery for ${d.clientName}.`
+    );
   };
 
-  const sendClientEmail = async (client: {
-    name: string;
-    email: string;
-    pin: string;
-  }) => {
-    if (!pharmacy) return;
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height:1.6">
-        <h2>Delivery Dispatcher</h2>
-
-        <p>Hello <strong>${client.name}</strong>,</p>
-
-        <p>Your order has been registered by:</p>
-        <p><strong>${pharmacy.name}</strong></p>
-
-        <p><strong>Your Access PIN:</strong></p>
-        <h1 style="letter-spacing:4px">${client.pin}</h1>
-
-        <p>You will need this PIN to receive your delivery.</p>
-      </div>
-    `;
-
-    await fetch(EMAIL_FUNCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: client.email,
-        subject: "Your Delivery Order PIN",
-        html,
-      }),
+  const markPickedUp = async (d: Delivery) => {
+    await updateDoc(doc(db, "deliveries", d.id), {
+      status: "picked_up",
+      pickedUpAt: serverTimestamp(),
     });
+
+    sendEmail(
+      d.clientEmail,
+      "Order picked up",
+      "Your order has been picked up."
+    );
   };
 
-  const handleSubmit = async () => {
-    setError("");
+  const markDelivered = async (d: Delivery) => {
+    await updateDoc(doc(db, "deliveries", d.id), {
+      status: "delivered",
+      deliveredAt: serverTimestamp(),
+    });
 
-    if (!pharmacyId) {
-      setError("Pharmacy not detected.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const clientData = {
-        name: form.name,
-        address: form.address,
-        phone: form.phone,
-        email: form.email,
-        pin: form.pin,
-        pharmacyId,
-        createdAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, "clients"), clientData);
-
-      if (form.email) {
-        try {
-          await sendClientEmail({
-            name: clientData.name || "Client",
-            email: clientData.email,
-            pin: clientData.pin,
-          });
-        } catch {}
-      }
-
-      setForm({
-        name: "",
-        address: "",
-        phone: "",
-        email: "",
-        pin: generatePin(),
-      });
-    } catch (err) {
-      console.error(err);
-      setError("Error creating client");
-    } finally {
-      setLoading(false);
-    }
+    sendEmail(
+      d.clientEmail,
+      "Order delivered",
+      "Your order has been delivered."
+    );
   };
 
   /* =======================
      UI
   ======================= */
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="p-6 max-w-5xl mx-auto space-y-10">
+      <h1 className="text-2xl font-bold">
+        Driver Dashboard
+      </h1>
 
-        {/* FORM */}
-        <div className="bg-white p-8 rounded-xl shadow">
-          <button
-            onClick={() => router.back()}
-            className="text-sm text-blue-600 hover:underline mb-6"
-          >
-            ← Back
-          </button>
+      {/* AVAILABLE */}
+      <section>
+        <h2 className="text-xl font-semibold mb-3">
+          Available Deliveries
+        </h2>
 
-          <h1 className="text-2xl font-bold mb-6">
-            Create Client
-          </h1>
+        {available.length === 0 && (
+          <p className="text-gray-500">
+            No deliveries available.
+          </p>
+        )}
 
-          {pharmacy && (
-            <p className="text-sm mb-4 text-gray-600">
-              Pharmacy: <strong>{pharmacy.name}</strong>
+        {available.map((d) => (
+          <div key={d.id} className="border p-4 mb-3">
+            <p><strong>Client:</strong> {d.clientName}</p>
+            <p><strong>Phone:</strong> {d.clientPhone}</p>
+            <p><strong>Address:</strong> {d.deliveryAddress}</p>
+
+            <p className="mt-2">
+              <strong>Pharmacy:</strong> {d.pharmacyName}
             </p>
-          )}
+            <p><strong>Pharmacy Phone:</strong> {d.pharmacyPhone}</p>
 
-          <div className="space-y-4">
-            {["name", "address", "phone", "email"].map((field) => (
-              <input
-                key={field}
-                name={field}
-                placeholder={field.toUpperCase()}
-                value={(form as any)[field]}
-                onChange={handleChange}
-                className="w-full border rounded px-3 py-2"
-              />
-            ))}
-
-            <input
-              value={form.pin}
-              disabled
-              className="w-full border rounded px-3 py-2 text-center tracking-widest bg-gray-100 font-semibold"
-            />
-
-            {error && (
-              <p className="text-red-600 text-sm">{error}</p>
-            )}
+            <p className="mt-2 text-sm">
+              <strong>Items:</strong>{" "}
+              {d.pumpCodes?.join(", ") || "N/A"}
+            </p>
 
             <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg"
+              onClick={() => acceptDelivery(d)}
+              className="mt-3 bg-blue-600 text-white px-4 py-2 rounded"
             >
-              {loading ? "Saving..." : "Create Client & Notify"}
+              Accept Delivery
             </button>
           </div>
-        </div>
+        ))}
+      </section>
 
-        {/* LIST */}
-        <div className="bg-white p-8 rounded-xl shadow">
-          <h2 className="text-xl font-bold mb-4">
-            Orders / Clients ({clients.length})
-          </h2>
+      {/* ASSIGNED */}
+      <section>
+        <h2 className="text-xl font-semibold mb-3">
+          My Active Deliveries
+        </h2>
 
-          <div className="space-y-4">
-            {clients.map((client) => (
-              <div
-                key={client.id}
-                className="border rounded-lg p-4"
+        {assigned.map((d) => (
+          <div key={d.id} className="border p-4 mb-3 bg-gray-50">
+            <p><strong>Client:</strong> {d.clientName}</p>
+            <p><strong>Status:</strong> {d.status}</p>
+
+            {d.status === "assigned" && (
+              <button
+                onClick={() => markPickedUp(d)}
+                className="mt-2 bg-purple-600 text-white px-4 py-1 rounded"
               >
-                <p className="font-semibold">{client.name}</p>
-                <p className="text-sm">📍 {client.address}</p>
-                <p className="text-sm">📞 {client.phone}</p>
-                <p className="text-sm">✉️ {client.email}</p>
+                Picked up order
+              </button>
+            )}
 
-                {pharmacy && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    Pharmacy: {pharmacy.name}
-                  </p>
-                )}
-
-                <p className="mt-2 font-mono tracking-widest">
-                  PIN: {client.pin}
-                </p>
-              </div>
-            ))}
+            {d.status === "picked_up" && (
+              <button
+                onClick={() => markDelivered(d)}
+                className="mt-2 bg-green-600 text-white px-4 py-1 rounded"
+              >
+                Mark as delivered
+              </button>
+            )}
           </div>
-        </div>
-
-      </div>
+        ))}
+      </section>
     </div>
   );
 }
