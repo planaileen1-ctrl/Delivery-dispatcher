@@ -40,16 +40,17 @@ export default function ClientDashboard() {
 
     const client = JSON.parse(stored);
 
+    // ✅ FIX: client MUST NOT see "created"
     const q = query(
       collection(db, "deliveries"),
-      where("clientId", "==", client.id)
+      where("clientId", "==", client.id),
+      where("status", "!=", "created")
     );
 
     const unsub = onSnapshot(q, async (snap) => {
       const result: DeliveryUI[] = [];
       const returns: Record<string, boolean> = {};
 
-      // 🔁 first pass: detect returns
       snap.docs.forEach((d) => {
         const data = d.data();
         if (data.type === "return" && data.originalDeliveryId) {
@@ -57,11 +58,9 @@ export default function ClientDashboard() {
         }
       });
 
-      // 📦 second pass: build UI list
       for (const d of snap.docs) {
         const delivery = d.data();
 
-        // ❌ hide return deliveries from main list
         if (delivery.type === "return") continue;
 
         let pharmacyName = "—";
@@ -103,7 +102,6 @@ export default function ClientDashboard() {
     return () => unsub();
   }, [router]);
 
-  /* ✅ CLIENT CONFIRMS RECEIPT */
   const confirmReceived = async (deliveryId: string) => {
     await updateDoc(doc(db, "deliveries", deliveryId), {
       status: "received_by_client",
@@ -113,7 +111,6 @@ export default function ClientDashboard() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {/* 🔙 BACK */}
       <button
         onClick={() => router.push("/")}
         className="text-blue-600 hover:underline mb-6"
@@ -147,69 +144,17 @@ export default function ClientDashboard() {
               ))}
             </ul>
 
-            <p>
-              <strong>Pharmacy:</strong>{" "}
-              {d.pharmacyName}
-            </p>
+            <p><strong>Pharmacy:</strong> {d.pharmacyName}</p>
+            <p><strong>Driver:</strong> {d.driverName}</p>
+            <p><strong>Status:</strong> {d.status}</p>
 
-            <p>
-              <strong>Driver:</strong>{" "}
-              {d.driverName}
-            </p>
-
-            {d.createdAt && (
-              <p>
-                <strong>Sent at:</strong>{" "}
-                {d.createdAt.toDate().toLocaleString()}
-              </p>
-            )}
-
-            {d.receivedAt && (
-              <p>
-                <strong>Received at:</strong>{" "}
-                {d.receivedAt.toDate().toLocaleString()}
-              </p>
-            )}
-
-            <p className="mt-2">
-              <strong>Status:</strong>{" "}
-              {d.status}
-            </p>
-
-            {/* STEP 1 */}
             {d.status === "delivered" && (
               <button
                 onClick={() => confirmReceived(d.id)}
-                className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
               >
                 I received the pumps
               </button>
-            )}
-
-            {/* STEP 2 – ONLY IF NO RETURN EXISTS */}
-            {d.status === "received_by_client" &&
-              !returnMap[d.id] && (
-                <div className="mt-4 p-4 border border-yellow-300 bg-yellow-50 rounded-lg">
-                  <p className="font-semibold text-yellow-800 mb-2">
-                    Need to return the pumps?
-                  </p>
-
-                  <button
-                    onClick={() =>
-                      router.push(`/client/return/${d.id}`)
-                    }
-                    className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700"
-                  >
-                    Return pumps to pharmacy
-                  </button>
-                </div>
-              )}
-
-            {/* ✅ RETURN ALREADY CREATED */}
-            {returnMap[d.id] && (
-              <p className="mt-4 text-yellow-700 font-semibold">
-                🔁 Return already created
-              </p>
             )}
           </div>
         ))}

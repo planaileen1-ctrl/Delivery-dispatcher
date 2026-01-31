@@ -20,8 +20,6 @@ import { db } from "@/lib/firebase";
 type Client = {
   id: string;
   name: string;
-  email?: string;
-  pin?: string;
 };
 
 type Driver = {
@@ -42,11 +40,7 @@ export default function CreateDeliveryPage() {
 
   const [pharmacyName, setPharmacyName] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
-
   const [clientId, setClientId] = useState("");
-  const [selectedClient, setSelectedClient] =
-    useState<Client | null>(null);
-
   const [address, setAddress] = useState("");
   const [pumpCodes, setPumpCodes] = useState("");
 
@@ -86,34 +80,13 @@ export default function CreateDeliveryPage() {
         snap.docs.map((d) => ({
           id: d.id,
           name: d.data().name || "Unnamed client",
-          email: d.data().email || "",
-          pin: d.data().pin || "",
         }))
       )
     );
   }, [pharmacyId]);
 
   /* =======================
-     LOAD SELECTED CLIENT
-  ======================= */
-  useEffect(() => {
-    if (!clientId) {
-      setSelectedClient(null);
-      return;
-    }
-
-    getDoc(doc(db, "clients", clientId)).then((snap) => {
-      if (snap.exists()) {
-        setSelectedClient({
-          id: snap.id,
-          ...(snap.data() as Omit<Client, "id">),
-        });
-      }
-    });
-  }, [clientId]);
-
-  /* =======================
-     GENERATE ORDER NUMBER
+     ORDER NUMBER
   ======================= */
   const generateOrderNumber = () => {
     const date = new Date()
@@ -125,13 +98,13 @@ export default function CreateDeliveryPage() {
   };
 
   /* =======================
-     SAVE DELIVERY
+     CREATE DELIVERY
   ======================= */
   const handleSubmit = async () => {
     setError("");
     setSuccessOrder(null);
 
-    if (!selectedClient || !address || !pumpCodes) {
+    if (!clientId || !address || !pumpCodes) {
       setError("All fields are required.");
       return;
     }
@@ -145,19 +118,14 @@ export default function CreateDeliveryPage() {
         {
           orderNumber,
           pharmacyId,
-          clientId: selectedClient.id,
-          clientSnapshot: {
-            name: selectedClient.name,
-            email: selectedClient.email || "",
-            pin: selectedClient.pin || "",
-          },
+          clientId,              // SOLO ID
           driverId: null,
           deliveryAddress: address,
           pumpCodes: pumpCodes
             .split(",")
             .map((p) => p.trim())
             .filter(Boolean),
-          status: "created",
+          status: "created",     // INTERNO (NO CLIENTE)
           createdAt: serverTimestamp(),
         }
       );
@@ -165,17 +133,17 @@ export default function CreateDeliveryPage() {
       setSuccessOrder(orderNumber);
 
       /* =======================
-         NOTIFY DRIVERS (APP + EMAIL)
+         NOTIFY DRIVERS ONLY
       ======================= */
       const driversSnap = await getDocs(
         collection(db, "deliveryDrivers")
       );
 
       for (const d of driversSnap.docs) {
-        const driver = {
+        const driver: Driver = {
           id: d.id,
           email: d.data().email,
-        } as Driver;
+        };
 
         // In-app notification
         await addDoc(collection(db, "notifications"), {
@@ -188,28 +156,26 @@ export default function CreateDeliveryPage() {
           createdAt: serverTimestamp(),
         });
 
-        // Email notification
+        // Email to driver ONLY
         if (driver.email) {
           fetch(EMAIL_FUNCTION_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify({
               to: driver.email,
               subject: "New delivery available",
-              text: `A new delivery is available.
-
-Order: ${orderNumber}
+              text: `Order: ${orderNumber}
 Address: ${address}
-Pumps: ${pumpCodes}
-
-— notificationsglobal`,
+Pumps: ${pumpCodes}`,
             }),
           }).catch(() => {});
         }
       }
 
+      // RESET
       setClientId("");
-      setSelectedClient(null);
       setAddress("");
       setPumpCodes("");
     } catch (err) {
@@ -221,15 +187,17 @@ Pumps: ${pumpCodes}
   };
 
   /* =======================
-     UI (SIN CAMBIOS)
+     UI
   ======================= */
   return (
     <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
-      {/* FORM */}
       <div className="md:col-span-2">
+        {/* HEADER */}
         <div className="flex justify-between text-sm mb-6">
           <button
-            onClick={() => router.push(`/pharmacy/${pharmacyId}`)}
+            onClick={() =>
+              router.push(`/pharmacy/${pharmacyId}`)
+            }
             className="text-blue-600 hover:underline"
           >
             ← Back to menu
@@ -244,14 +212,10 @@ Pumps: ${pumpCodes}
           Create Delivery
         </h1>
 
-        {/* CLIENT */}
-        <label className="block mb-2 font-medium">
-          Client
-        </label>
         <select
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
-          className="w-full border p-2 mb-2"
+          className="w-full border p-2 mb-4"
         >
           <option value="">Select client</option>
           {clients.map((c) => (
@@ -261,36 +225,30 @@ Pumps: ${pumpCodes}
           ))}
         </select>
 
-        {selectedClient && (
-          <div className="bg-gray-50 border rounded p-3 mb-4 text-sm">
-            <p><strong>Name:</strong> {selectedClient.name}</p>
-            <p><strong>Email:</strong> {selectedClient.email || "-"}</p>
-            <p><strong>PIN:</strong> {selectedClient.pin || "-"}</p>
-          </div>
-        )}
-
-        <label className="block mb-2 font-medium">
-          Delivery Address
-        </label>
         <input
+          placeholder="Delivery address"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           className="w-full border p-2 mb-4"
         />
 
-        <label className="block mb-2 font-medium">
-          Pump Bar Codes
-        </label>
         <input
+          placeholder="Pump bar codes"
           value={pumpCodes}
           onChange={(e) => setPumpCodes(e.target.value)}
-          className="w-full border p-2 mb-6"
+          className="w-full border p-2 mb-4"
         />
 
-        {error && <p className="text-red-600 mb-4">{error}</p>}
+        {error && (
+          <p className="text-red-600 mb-3">
+            {error}
+          </p>
+        )}
+
         {successOrder && (
-          <p className="text-green-600 mb-4">
-            Order created: <strong>{successOrder}</strong>
+          <p className="text-green-600 mb-3">
+            Order created:{" "}
+            <strong>{successOrder}</strong>
           </p>
         )}
 

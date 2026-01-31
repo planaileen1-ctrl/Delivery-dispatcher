@@ -18,9 +18,6 @@ import { useRouter } from "next/navigation";
 const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
-/* =======================
-   Types
-======================= */
 type Delivery = {
   id: string;
   deliveryAddress?: string;
@@ -30,7 +27,6 @@ type Delivery = {
   pharmacyId: string;
   driverId?: string | null;
   clientName?: string;
-  clientEmail?: string;
   pharmacyName?: string;
 };
 
@@ -46,47 +42,42 @@ export default function DriverDashboard() {
       : null;
 
   useEffect(() => {
-    if (!driverId) {
-      router.push("/delivery-driver/login");
-    }
+    if (!driverId) router.push("/delivery-driver/login");
   }, [driverId, router]);
 
   const enrichDelivery = async (d: any, id: string) => {
-    let clientName = "Unknown";
-    let clientEmail: string | undefined;
-    let pharmacyName = "Unknown pharmacy";
-
     const clientSnap = await getDoc(doc(db, "clients", d.clientId));
-    if (clientSnap.exists()) {
-      clientName = clientSnap.data().name;
-      clientEmail = clientSnap.data().email;
-    }
-
     const pharmacySnap = await getDoc(
       doc(db, "pharmacies", d.pharmacyId)
     );
-    if (pharmacySnap.exists()) {
-      pharmacyName = pharmacySnap.data().name;
-    }
 
     return {
       id,
       ...d,
-      clientName,
-      clientEmail,
-      pharmacyName,
+      clientName: clientSnap.exists()
+        ? clientSnap.data().name
+        : "Unknown",
+      pharmacyName: pharmacySnap.exists()
+        ? pharmacySnap.data().name
+        : "Unknown pharmacy",
     } as Delivery;
   };
 
+  /* =======================
+     AVAILABLE (SOLO CREATED)
+  ======================= */
   useEffect(() => {
     const q = query(
       collection(db, "deliveries"),
+      where("status", "==", "created"),
       where("driverId", "==", null)
     );
 
     const unsub = onSnapshot(q, async (snap) => {
       const list = await Promise.all(
-        snap.docs.map((d) => enrichDelivery(d.data(), d.id))
+        snap.docs.map((d) =>
+          enrichDelivery(d.data(), d.id)
+        )
       );
       setAvailable(list);
     });
@@ -94,6 +85,9 @@ export default function DriverDashboard() {
     return () => unsub();
   }, []);
 
+  /* =======================
+     ASSIGNED TO ME
+  ======================= */
   useEffect(() => {
     if (!driverId) return;
 
@@ -104,7 +98,9 @@ export default function DriverDashboard() {
 
     const unsub = onSnapshot(q, async (snap) => {
       const list = await Promise.all(
-        snap.docs.map((d) => enrichDelivery(d.data(), d.id))
+        snap.docs.map((d) =>
+          enrichDelivery(d.data(), d.id)
+        )
       );
       setAssigned(list);
     });
@@ -112,63 +108,113 @@ export default function DriverDashboard() {
     return () => unsub();
   }, [driverId]);
 
+  /* =======================
+     ACCEPT DELIVERY (SAFE)
+  ======================= */
   const acceptDelivery = async (d: Delivery) => {
     if (!driverId) return;
 
-    await updateDoc(doc(db, "deliveries", d.id), {
+    const ref = doc(db, "deliveries", d.id);
+    const snap = await getDoc(ref);
+
+    // 🚫 someone already took it
+    if (!snap.exists()) return;
+
+    const current = snap.data();
+    if (
+      current.status !== "created" ||
+      current.driverId !== null
+    ) {
+      alert("This delivery was already taken.");
+      return;
+    }
+
+    // ✅ lock delivery
+    await updateDoc(ref, {
       driverId,
       status: "assigned",
       updatedAt: serverTimestamp(),
     });
 
-    // Notify client (APP)
+    // 📲 notify client
     await addDoc(collection(db, "notifications"), {
       userId: d.clientId,
       role: "client",
       title: "Driver assigned",
-      message: `Your delivery ${d.id} has been assigned to a driver.`,
+      message: "A driver has accepted your delivery.",
       deliveryId: d.id,
       read: false,
       createdAt: serverTimestamp(),
     });
 
-    // Notify client (EMAIL)
-    if (d.clientEmail) {
-      fetch(EMAIL_FUNCTION_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: d.clientEmail,
-          subject: "Your delivery is on the way",
-          text: `Your delivery has been assigned.
+    // 📧 email client
+    const clientSnap = await getDoc(
+      doc(db, "clients", d.clientId)
+    );
+
+    if (clientSnap.exists()) {
+      const client = clientSnap.data();
+      if (client.email) {
+        fetch(EMAIL_FUNCTION_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            to: client.email,
+            subject: "Your delivery is on the way",
+            text: `Hello ${client.name},
+
+A driver has accepted your delivery.
 
 Address: ${d.deliveryAddress}
 Pumps: ${d.pumpCodes.join(", ")}
 
 — notificationsglobal`,
-        }),
-      }).catch(() => {});
+          }),
+        }).catch(() => {});
+      }
     }
   };
 
-  /* =======================
-     UI (resto sin cambios)
-  ======================= */
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-10">
-      <h1 className="text-2xl font-bold">Driver Dashboard</h1>
+      <h1 className="text-2xl font-bold">
+        Driver Dashboard
+      </h1>
 
       <section>
         <h2 className="text-xl font-semibold mb-3">
           Available Deliveries
         </h2>
 
+        {available.length === 0 && (
+          <p className="text-gray-500">
+            No deliveries available.
+          </p>
+        )}
+
         {available.map((d) => (
-          <div key={d.id} className="border p-4 mb-3">
-            <p><strong>Pharmacy:</strong> {d.pharmacyName}</p>
-            <p><strong>Client:</strong> {d.clientName}</p>
-            <p><strong>Address:</strong> {d.deliveryAddress}</p>
-            <p><strong>Pumps:</strong> {d.pumpCodes.join(", ")}</p>
+          <div
+            key={d.id}
+            className="border p-4 mb-3"
+          >
+            <p>
+              <strong>Pharmacy:</strong>{" "}
+              {d.pharmacyName}
+            </p>
+            <p>
+              <strong>Client:</strong>{" "}
+              {d.clientName}
+            </p>
+            <p>
+              <strong>Address:</strong>{" "}
+              {d.deliveryAddress}
+            </p>
+            <p>
+              <strong>Pumps:</strong>{" "}
+              {d.pumpCodes.join(", ")}
+            </p>
 
             <button
               onClick={() => acceptDelivery(d)}
