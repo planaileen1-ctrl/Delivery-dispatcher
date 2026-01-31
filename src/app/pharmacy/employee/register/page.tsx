@@ -37,21 +37,6 @@ export default function EmployeeRegisterPage() {
   const [pharmacy, setPharmacy] = useState<any>(null);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const stored = localStorage.getItem("pharmacy");
-    if (!stored) {
-      router.push("/pharmacy/login");
-      return;
-    }
-
-    setPharmacy(JSON.parse(stored));
-    setReady(true);
-  }, [router]);
-
-  if (!ready) return null;
-
   /* =======================
      FORM
   ======================= */
@@ -72,6 +57,25 @@ export default function EmployeeRegisterPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
 
+  /* =======================
+     LOAD SESSION
+  ======================= */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored = localStorage.getItem("pharmacy");
+    if (!stored) {
+      router.push("/pharmacy/login");
+      return;
+    }
+
+    setPharmacy(JSON.parse(stored));
+    setReady(true);
+  }, [router]);
+
+  /* =======================
+     SIGNATURE HELPERS
+  ======================= */
   const getPoint = (
     e:
       | React.MouseEvent<HTMLCanvasElement>
@@ -190,8 +194,10 @@ export default function EmployeeRegisterPage() {
   };
 
   /* =======================
-     UI
+     UI (RETURN AL FINAL)
   ======================= */
+  if (!ready) return null;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-xl shadow w-full max-w-lg space-y-4">
@@ -223,7 +229,6 @@ export default function EmployeeRegisterPage() {
           className="w-full border p-2 rounded bg-gray-100 text-center tracking-widest"
         />
 
-        {/* ✅ SIGNATURE – ESTE ES EL CANVAS CORRECTO */}
         <div>
           <p className="text-sm font-medium mb-1">
             Signature (finger or mouse)
