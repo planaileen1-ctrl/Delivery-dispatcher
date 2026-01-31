@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 
@@ -33,13 +38,17 @@ export default function PharmacyPinLogin() {
         return;
       }
 
-      const doc = snapshot.docs[0];
+      const docSnap = snapshot.docs[0];
       const pharmacy = {
-        id: doc.id,
-        name: doc.data().name,
+        id: docSnap.id,
+        name: docSnap.data().name,
       };
 
-      localStorage.setItem("pharmacy", JSON.stringify(pharmacy));
+      localStorage.setItem(
+        "pharmacy",
+        JSON.stringify(pharmacy)
+      );
+
       router.push(`/pharmacy/${pharmacy.id}`);
     } catch (err) {
       console.error(err);
@@ -52,7 +61,6 @@ export default function PharmacyPinLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm relative">
-        
         {/* 🔙 BACK */}
         <button
           onClick={() => router.push("/")}
@@ -65,11 +73,19 @@ export default function PharmacyPinLogin() {
           Pharmacy Access
         </h1>
 
+        {/* 🔢 PIN INPUT */}
         <input
-          type="password"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
           maxLength={4}
           value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+          onChange={(e) =>
+            setPin(
+              e.target.value.replace(/\D/g, "")
+            )
+          }
           className="w-full text-center text-2xl tracking-widest border rounded-lg p-3 mb-4"
           placeholder="••••"
         />
@@ -83,7 +99,7 @@ export default function PharmacyPinLogin() {
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition"
+          className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition disabled:opacity-60"
         >
           {loading ? "Checking..." : "Enter"}
         </button>
