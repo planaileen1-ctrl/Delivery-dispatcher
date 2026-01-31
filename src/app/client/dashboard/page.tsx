@@ -45,7 +45,6 @@ export default function ClientDashboard() {
         "assigned",
         "picked_up",
         "delivered",
-        "received_by_client",
       ])
     );
 
@@ -55,10 +54,10 @@ export default function ClientDashboard() {
       for (const d of snap.docs) {
         const delivery = d.data();
 
-        // ❌ NO mostrar retornos como pedidos normales
+        // ❌ no mostrar retornos
         if (delivery.type === "return") continue;
 
-        // 🔒 verificar si ya existe un retorno
+        // 🔒 verificar si ya existe retorno
         const returnQuery = query(
           collection(db, "deliveries"),
           where("type", "==", "return"),
@@ -67,7 +66,7 @@ export default function ClientDashboard() {
         const returnSnap = await getDocs(returnQuery);
 
         const canReturn =
-          delivery.status === "received_by_client" &&
+          delivery.status === "delivered" &&
           returnSnap.empty;
 
         let pharmacyName = "—";
@@ -141,7 +140,6 @@ export default function ClientDashboard() {
             <p><strong>Driver:</strong> {d.driverName}</p>
             <p><strong>Status:</strong> {d.status}</p>
 
-            {/* ✅ BOTÓN SOLO CUANDO SE PUEDE */}
             {d.canReturn && (
               <button
                 onClick={() =>
