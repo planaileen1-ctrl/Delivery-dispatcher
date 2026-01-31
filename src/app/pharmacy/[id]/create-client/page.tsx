@@ -9,7 +9,6 @@ import {
   onSnapshot,
   query,
   where,
-  orderBy,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -20,7 +19,7 @@ const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
 /* =======================
-   Types
+   TYPES
 ======================= */
 type Client = {
   id: string;
@@ -32,7 +31,7 @@ type Client = {
 };
 
 /* =======================
-   Page
+   PAGE
 ======================= */
 export default function CreateClientPage() {
   const router = useRouter();
@@ -58,15 +57,14 @@ export default function CreateClientPage() {
   const [error, setError] = useState("");
 
   /* =======================
-     Load clients
+     LOAD CLIENTS (FIXED)
   ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
 
     const q = query(
       collection(db, "clients"),
-      where("pharmacyId", "==", pharmacyId),
-      orderBy("createdAt", "desc")
+      where("pharmacyId", "==", pharmacyId)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
@@ -74,6 +72,7 @@ export default function CreateClientPage() {
         id: doc.id,
         ...(doc.data() as Omit<Client, "id">),
       }));
+
       setClients(list);
     });
 
@@ -81,7 +80,7 @@ export default function CreateClientPage() {
   }, [pharmacyId]);
 
   /* =======================
-     Handlers
+     HANDLERS
   ======================= */
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({
@@ -95,22 +94,15 @@ export default function CreateClientPage() {
     email: string;
     pin: string;
   }) => {
+    if (!client.email) return;
+
     const html = `
       <div style="font-family: Arial, sans-serif; line-height:1.6">
         <h2>Welcome to Delivery Dispatcher</h2>
-
         <p>Hello <strong>${client.name}</strong>,</p>
-
-        <p>Your client account has been created successfully.</p>
-
+        <p>Your client account has been created.</p>
         <p><strong>Access PIN:</strong></p>
         <h1 style="letter-spacing:4px">${client.pin}</h1>
-
-        <p>You can now use this PIN when placing orders.</p>
-
-        <p style="margin-top:30px;font-size:12px;color:#666">
-          If you did not expect this email, please contact your pharmacy.
-        </p>
       </div>
     `;
 
@@ -129,7 +121,7 @@ export default function CreateClientPage() {
     setError("");
 
     if (!pharmacyId) {
-      setError("Pharmacy not detected. Check the URL.");
+      setError("Pharmacy not detected.");
       return;
     }
 
@@ -137,10 +129,10 @@ export default function CreateClientPage() {
       setLoading(true);
 
       const clientData = {
-        name: form.name || "",
-        address: form.address || "",
-        phone: form.phone || "",
-        email: form.email || "",
+        name: form.name,
+        address: form.address,
+        phone: form.phone,
+        email: form.email,
         pin: form.pin,
         pharmacyId,
         createdAt: serverTimestamp(),
@@ -148,20 +140,12 @@ export default function CreateClientPage() {
 
       await addDoc(collection(db, "clients"), clientData);
 
-      // 📧 Send email (same pattern as others)
-      if (form.email) {
-        try {
-          await sendClientEmail({
-            name: clientData.name || "Client",
-            email: clientData.email,
-            pin: clientData.pin,
-          });
-        } catch (mailError) {
-          console.error("Email error:", mailError);
-        }
-      }
+      await sendClientEmail({
+        name: clientData.name || "Client",
+        email: clientData.email,
+        pin: clientData.pin,
+      });
 
-      // Reset form
       setForm({
         name: "",
         address: "",
@@ -211,12 +195,12 @@ export default function CreateClientPage() {
 
             <div>
               <label className="block text-sm font-medium mb-1">
-                Client PIN (auto-generated)
+                Client PIN
               </label>
               <input
                 value={form.pin}
                 disabled
-                className="w-full border rounded px-3 py-2 text-center tracking-widest bg-gray-100 font-semibold"
+                className="w-full border rounded px-3 py-2 text-center bg-gray-100 font-semibold"
               />
             </div>
 
@@ -229,7 +213,7 @@ export default function CreateClientPage() {
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="w-full bg-blue-600 text-white py-3 rounded-lg"
             >
               {loading ? "Saving..." : "Create Client & Send Email"}
             </button>
@@ -248,27 +232,22 @@ export default function CreateClientPage() {
             </p>
           ) : (
             <div className="space-y-3">
-              {clients.map((client) => (
+              {clients.map((c) => (
                 <div
-                  key={client.id}
-                  className="border rounded-lg p-4 flex justify-between items-center"
+                  key={c.id}
+                  className="border rounded-lg p-4 flex justify-between"
                 >
                   <div>
-                    <p className="font-medium">
-                      {client.name || "Unnamed client"}
-                    </p>
+                    <p className="font-medium">{c.name}</p>
                     <p className="text-xs text-gray-500">
-                      {client.email || client.phone}
+                      {c.email || c.phone}
                     </p>
                   </div>
 
                   <div className="text-right">
-                    <p className="text-sm font-semibold tracking-widest">
-                      {client.pin}
+                    <p className="font-semibold tracking-widest">
+                      {c.pin}
                     </p>
-                    <span className="text-xs text-green-600">
-                      Active
-                    </span>
                   </div>
                 </div>
               ))}
