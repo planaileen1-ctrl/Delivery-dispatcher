@@ -17,6 +17,8 @@ export default function PharmacyPinLogin() {
   const router = useRouter();
 
   const handleSubmit = async () => {
+    setError("");
+
     if (pin.length !== 4) {
       setError("PIN must be 4 digits");
       return;
@@ -24,7 +26,6 @@ export default function PharmacyPinLogin() {
 
     try {
       setLoading(true);
-      setError("");
 
       const q = query(
         collection(db, "pharmacies"),
@@ -39,11 +40,25 @@ export default function PharmacyPinLogin() {
       }
 
       const docSnap = snapshot.docs[0];
+      const data = docSnap.data();
+
+      // 🚫 bloqueada
+      if (data.suspended) {
+        setError(
+          "This pharmacy account is suspended. Contact support."
+        );
+        return;
+      }
+
       const pharmacy = {
         id: docSnap.id,
-        name: docSnap.data().name,
+        name: data.name,
+        email: data.email,
+        state: data.state,
+        city: data.city,
       };
 
+      // 💾 persistir sesión
       localStorage.setItem(
         "pharmacy",
         JSON.stringify(pharmacy)
@@ -61,6 +76,7 @@ export default function PharmacyPinLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm relative">
+
         {/* 🔙 BACK */}
         <button
           onClick={() => router.push("/")}
@@ -78,13 +94,11 @@ export default function PharmacyPinLogin() {
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          autoComplete="one-time-code"
           maxLength={4}
+          autoComplete="one-time-code"
           value={pin}
           onChange={(e) =>
-            setPin(
-              e.target.value.replace(/\D/g, "")
-            )
+            setPin(e.target.value.replace(/\D/g, ""))
           }
           className="w-full text-center text-2xl tracking-widest border rounded-lg p-3 mb-4"
           placeholder="••••"
@@ -103,6 +117,19 @@ export default function PharmacyPinLogin() {
         >
           {loading ? "Checking..." : "Enter"}
         </button>
+
+        {/* ➕ REGISTER */}
+        <p className="text-center text-sm text-gray-500 mt-6">
+          New pharmacy?{" "}
+          <button
+            onClick={() =>
+              router.push("/pharmacy/register")
+            }
+            className="text-blue-600 hover:underline"
+          >
+            Register here
+          </button>
+        </p>
       </div>
     </div>
   );

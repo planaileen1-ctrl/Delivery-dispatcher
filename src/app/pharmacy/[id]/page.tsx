@@ -159,7 +159,7 @@ export default function PharmacyDashboard() {
           gradient="from-sky-600 to-indigo-600"
           onClick={() =>
             router.push(
-              `/pharmacy/${pharmacy.id}/pumps`
+              `/pharmacy/${pharmacy.id}/manage-pump`
             )
           }
         />
