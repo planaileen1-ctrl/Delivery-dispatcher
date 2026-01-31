@@ -1,48 +1,56 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import * as nodemailer from "nodemailer";
+import cors from "cors";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "notificationsglobal@gmail.com",
-    pass: process.env.MAIL_PASS!,
-  },
-});
+const GMAIL_PASS = defineSecret("GMAIL_PASS");
+const corsHandler = cors({ origin: true });
 
 export const sendEmail = onRequest(
   {
     region: "us-central1",
-    cpu: 1,
+    secrets: [GMAIL_PASS],
   },
-  async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
-      return;
-    }
+  (req, res) => {
+    corsHandler(req, res, async () => {
+      if (req.method !== "POST") {
+        res.status(405).json({ error: "Method not allowed" });
+        return;
+      }
 
-    const { to, subject, text } = req.body;
+      const { to, subject, html, text } = req.body;
 
-    if (!to || !subject || !text) {
-      res.status(400).json({ error: "Missing fields" });
-      return;
-    }
+      if (!to || !subject || (!html && !text)) {
+        res.status(400).json({ error: "Missing fields" });
+        return;
+      }
 
-    try {
-      await transporter.sendMail({
-        from: `"Notifications Global" <notificationsglobal@gmail.com>`,
-        to,
-        subject,
-        text,
-      });
+      try {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: "notificationsglobal@gmail.com",
+            pass: GMAIL_PASS.value(),
+          },
+        });
 
-      console.log("✅ Email sent to:", to);
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("❌ Email error:", err);
-      res.status(500).json({
-        error: "Email failed",
-        details: err.message,
-      });
-    }
+        await transporter.sendMail({
+          from: `"Delivery Dispatcher" <notificationsglobal@gmail.com>`,
+          to,
+          subject,
+          html,
+          text,
+        });
+
+        console.log("✅ Email sent to:", to);
+        res.json({ success: true });
+      } catch (err: any) {
+        console.error("❌ Email error:", err);
+        res.status(500).json({
+          error: "Email failed",
+          details: err.message,
+        });
+      }
+    });
   }
 );
