@@ -1,19 +1,28 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function EmployeeMenuPage() {
   const router = useRouter();
+  const [pharmacy, setPharmacy] = useState<any>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const pharmacy = localStorage.getItem("pharmacy");
-    if (!pharmacy) router.push("/pharmacy/login");
+    if (typeof window === "undefined") return;
+
+    const stored = localStorage.getItem("pharmacy");
+
+    if (!stored) {
+      router.push("/pharmacy/login");
+      return;
+    }
+
+    setPharmacy(JSON.parse(stored));
+    setReady(true);
   }, [router]);
 
-  const pharmacy = JSON.parse(
-    localStorage.getItem("pharmacy") || "{}"
-  );
+  if (!ready) return null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -38,6 +47,16 @@ export default function EmployeeMenuPage() {
           className="w-full bg-green-600 text-white py-3 rounded"
         >
           Register Employee
+        </button>
+
+        <button
+          onClick={() => {
+            localStorage.removeItem("pharmacy");
+            router.push("/pharmacy/login");
+          }}
+          className="text-sm text-red-600 underline"
+        >
+          Logout pharmacy
         </button>
       </div>
     </div>

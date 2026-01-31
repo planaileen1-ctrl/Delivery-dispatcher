@@ -2,39 +2,68 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export default function EmployeeLoginPage() {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
   const router = useRouter();
 
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [pharmacy, setPharmacy] = useState<any>(null);
+  const [ready, setReady] = useState(false);
+
+  // 🔐 Load pharmacy safely (CLIENT ONLY)
   useEffect(() => {
-    const pharmacy = localStorage.getItem("pharmacy");
-    if (!pharmacy) router.push("/pharmacy/login");
-  }, [router]);
+    if (typeof window === "undefined") return;
 
-  const handleLogin = async () => {
-    const pharmacy = JSON.parse(
-      localStorage.getItem("pharmacy")!
-    );
-
-    const q = query(
-      collection(db, "pharmacyEmployees"),
-      where("pharmacyId", "==", pharmacy.id),
-      where("pin", "==", pin),
-      where("active", "==", true)
-    );
-
-    const snap = await getDocs(q);
-
-    if (snap.empty) {
-      setError("Invalid PIN");
+    const stored = localStorage.getItem("pharmacy");
+    if (!stored) {
+      router.push("/pharmacy/login");
       return;
     }
 
-    router.push(`/pharmacy/${pharmacy.id}`);
+    setPharmacy(JSON.parse(stored));
+    setReady(true);
+  }, [router]);
+
+  // ⛔ Block render until client ready
+  if (!ready) return null;
+
+  const handleLogin = async () => {
+    setError("");
+
+    if (pin.length !== 4) {
+      setError("PIN must be 4 digits");
+      return;
+    }
+
+    try {
+      const q = query(
+        collection(db, "pharmacyEmployees"),
+        where("pharmacyId", "==", pharmacy.id),
+        where("pin", "==", pin),
+        where("active", "==", true)
+      );
+
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        setError("Invalid PIN");
+        return;
+      }
+
+      // ✅ ENTER PHARMACY DASHBOARD
+      router.push(`/pharmacy/${pharmacy.id}`);
+    } catch (e) {
+      console.error(e);
+      setError("Login error");
+    }
   };
 
   return (
