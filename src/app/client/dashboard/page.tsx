@@ -40,17 +40,23 @@ export default function ClientDashboard() {
 
     const client = JSON.parse(stored);
 
-    // ✅ FIX: client MUST NOT see "created"
+    // ✅ FIX REAL: whitelist de estados visibles al cliente
     const q = query(
       collection(db, "deliveries"),
       where("clientId", "==", client.id),
-      where("status", "!=", "created")
+      where("status", "in", [
+        "assigned",
+        "picked_up",
+        "delivered",
+        "received_by_client",
+      ])
     );
 
     const unsub = onSnapshot(q, async (snap) => {
       const result: DeliveryUI[] = [];
       const returns: Record<string, boolean> = {};
 
+      // detectar devoluciones
       snap.docs.forEach((d) => {
         const data = d.data();
         if (data.type === "return" && data.originalDeliveryId) {
