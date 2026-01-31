@@ -25,6 +25,7 @@ type Delivery = {
   deliveryAddress?: string;
   pumpCodes: string[];
   status: string;
+  type?: "return";
 
   clientId: string;
   pharmacyId: string;
@@ -117,12 +118,13 @@ export default function DriverDashboard() {
 
   /* =======================
      AVAILABLE DELIVERIES
+     ✅ CREATED + RETURN_REQUESTED
   ======================= */
   useEffect(() => {
     const q = query(
       collection(db, "deliveries"),
-      where("status", "==", "created"),
-      where("driverId", "==", null)
+      where("driverId", "==", null),
+      where("status", "in", ["created", "return_requested"])
     );
 
     const unsub = onSnapshot(q, async (snap) => {
@@ -177,17 +179,20 @@ export default function DriverDashboard() {
       updatedAt: serverTimestamp(),
     });
 
-    sendEmail(
-      d.clientEmail,
-      "Driver assigned",
-      `Your delivery is on the way.\nAddress: ${d.deliveryAddress}`
-    );
+    // 📧 emails SOLO para pedidos normales
+    if (!d.type) {
+      sendEmail(
+        d.clientEmail,
+        "Driver assigned",
+        `Your delivery is on the way.\nAddress: ${d.deliveryAddress}`
+      );
 
-    sendEmail(
-      d.pharmacyEmail,
-      "Delivery accepted",
-      `Driver accepted the delivery for ${d.clientName}.`
-    );
+      sendEmail(
+        d.pharmacyEmail,
+        "Delivery accepted",
+        `Driver accepted the delivery for ${d.clientName}.`
+      );
+    }
   };
 
   const markPickedUp = async (d: Delivery) => {
@@ -195,25 +200,15 @@ export default function DriverDashboard() {
       status: "picked_up",
       pickedUpAt: serverTimestamp(),
     });
-
-    sendEmail(
-      d.clientEmail,
-      "Order picked up",
-      "Your order has been picked up."
-    );
   };
 
   const markDelivered = async (d: Delivery) => {
     await updateDoc(doc(db, "deliveries", d.id), {
-      status: "delivered",
+      status: d.type === "return"
+        ? "returned_to_pharmacy"
+        : "delivered",
       deliveredAt: serverTimestamp(),
     });
-
-    sendEmail(
-      d.clientEmail,
-      "Order delivered",
-      "Your order has been delivered."
-    );
   };
 
   /* =======================
@@ -241,7 +236,7 @@ export default function DriverDashboard() {
           <div key={d.id} className="border p-4 mb-3">
             <p><strong>Client:</strong> {d.clientName}</p>
             <p><strong>Phone:</strong> {d.clientPhone}</p>
-            <p><strong>Address:</strong> {d.deliveryAddress}</p>
+            <p><strong>Address:</strong> {d.deliveryAddress || "—"}</p>
 
             <p className="mt-2">
               <strong>Pharmacy:</strong> {d.pharmacyName}
@@ -249,15 +244,21 @@ export default function DriverDashboard() {
             <p><strong>Pharmacy Phone:</strong> {d.pharmacyPhone}</p>
 
             <p className="mt-2 text-sm">
-              <strong>Items:</strong>{" "}
+              <strong>Pumps:</strong>{" "}
               {d.pumpCodes?.join(", ") || "N/A"}
             </p>
+
+            {d.type === "return" && (
+              <p className="mt-2 text-orange-600 font-semibold">
+                🔄 Return pickup
+              </p>
+            )}
 
             <button
               onClick={() => acceptDelivery(d)}
               className="mt-3 bg-blue-600 text-white px-4 py-2 rounded"
             >
-              Accept Delivery
+              Accept
             </button>
           </div>
         ))}
@@ -279,7 +280,7 @@ export default function DriverDashboard() {
                 onClick={() => markPickedUp(d)}
                 className="mt-2 bg-purple-600 text-white px-4 py-1 rounded"
               >
-                Picked up order
+                Picked up
               </button>
             )}
 
@@ -288,7 +289,9 @@ export default function DriverDashboard() {
                 onClick={() => markDelivered(d)}
                 className="mt-2 bg-green-600 text-white px-4 py-1 rounded"
               >
-                Mark as delivered
+                {d.type === "return"
+                  ? "Return to pharmacy"
+                  : "Mark as delivered"}
               </button>
             )}
           </div>

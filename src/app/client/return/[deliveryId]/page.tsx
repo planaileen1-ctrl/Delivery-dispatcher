@@ -9,6 +9,7 @@ import {
   collection,
   getDocs,
   addDoc,
+  updateDoc,
   serverTimestamp,
   query,
   where,
@@ -94,6 +95,7 @@ export default function ReturnPumpsPage() {
   /* =======================
      SUBMIT RETURN
      + AUTO NOTIFY DRIVERS
+     + MARK ORIGINAL DELIVERY
   ======================= */
   const submitReturn = async () => {
     if (!delivery) return;
@@ -157,6 +159,15 @@ export default function ReturnPumpsPage() {
       }
     );
 
+    // ✅ marcar entrega original para ocultar botón definitivamente
+    await updateDoc(
+      doc(db, "deliveries", delivery.id),
+      {
+        hasReturn: true,
+        updatedAt: serverTimestamp(),
+      }
+    );
+
     // 🔔 notify pharmacy
     await addDoc(collection(db, "notifications"), {
       userId: delivery.pharmacyId,
@@ -178,8 +189,7 @@ export default function ReturnPumpsPage() {
         userId: d.id,
         role: "driver",
         title: "New return available",
-        message:
-          "A pump return is ready for pickup.",
+        message: "A pump return is ready for pickup.",
         deliveryId: returnRef.id,
         read: false,
         createdAt: serverTimestamp(),

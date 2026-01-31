@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   collection,
   query,
   where,
   onSnapshot,
-  doc,
   getDoc,
+  doc,
   updateDoc,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
 
 type DeliveryUI = {
   id: string;
@@ -20,10 +20,8 @@ type DeliveryUI = {
   status: string;
   pharmacyName: string;
   driverName: string;
-  createdAt?: Timestamp;
-  receivedAt?: Timestamp;
-  type?: string;
-  originalDeliveryId?: string;
+  hasReturn?: boolean;
+  deliveredAt?: Timestamp;
 };
 
 export default function ClientDashboard() {
@@ -51,47 +49,48 @@ export default function ClientDashboard() {
     );
 
     const unsub = onSnapshot(q, async (snap) => {
-      const result: DeliveryUI[] = [];
+      const list: DeliveryUI[] = [];
 
       for (const d of snap.docs) {
-        const delivery = d.data();
-        if (delivery.type === "return") continue;
+        const data = d.data();
+
+        if (data.type === "return") continue;
 
         let pharmacyName = "—";
-        if (delivery.pharmacyId) {
-          const phSnap = await getDoc(
-            doc(db, "pharmacies", delivery.pharmacyId)
+        if (data.pharmacyId) {
+          const ph = await getDoc(
+            doc(db, "pharmacies", data.pharmacyId)
           );
-          if (phSnap.exists()) pharmacyName = phSnap.data().name;
+          if (ph.exists()) pharmacyName = ph.data().name;
         }
 
         let driverName = "—";
-        if (delivery.driverId) {
-          const drSnap = await getDoc(
-            doc(db, "deliveryDrivers", delivery.driverId)
+        if (data.driverId) {
+          const dr = await getDoc(
+            doc(db, "deliveryDrivers", data.driverId)
           );
-          if (drSnap.exists()) driverName = drSnap.data().name;
+          if (dr.exists()) driverName = dr.data().name;
         }
 
-        result.push({
+        list.push({
           id: d.id,
-          pumpCodes: delivery.pumpCodes || [],
-          status: delivery.status,
-          createdAt: delivery.createdAt,
-          receivedAt: delivery.receivedAt,
+          pumpCodes: data.pumpCodes || [],
+          status: data.status,
           pharmacyName,
           driverName,
+          hasReturn: data.hasReturn || false,
+          deliveredAt: data.deliveredAt,
         });
       }
 
-      setDeliveries(result);
+      setDeliveries(list);
     });
 
     return () => unsub();
   }, [router]);
 
-  const confirmReceived = async (deliveryId: string) => {
-    await updateDoc(doc(db, "deliveries", deliveryId), {
+  const confirmReceived = async (id: string) => {
+    await updateDoc(doc(db, "deliveries", id), {
       status: "received_by_client",
       receivedAt: new Date(),
     });
@@ -132,15 +131,17 @@ export default function ClientDashboard() {
             {d.status === "delivered" && (
               <button
                 onClick={() => confirmReceived(d.id)}
-                className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
+                className="mt-3 bg-green-600 text-white px-4 py-2 rounded"
               >
                 I received the pumps
               </button>
             )}
 
-            {d.status === "received_by_client" && (
+            {d.status === "received_by_client" && !d.hasReturn && (
               <button
-                onClick={() => router.push(`/client/return/${d.id}`)}
+                onClick={() =>
+                  router.push(`/client/return/${d.id}`)
+                }
                 className="mt-3 bg-yellow-600 text-white px-4 py-2 rounded"
               >
                 Return pumps
