@@ -31,29 +31,12 @@ const formatUSDate = () =>
 export default function EmployeeRegisterPage() {
   const router = useRouter();
 
-  // 🔐 SSR-safe state
+  /* =======================
+     SESSION (SSR SAFE)
+  ======================= */
   const [pharmacy, setPharmacy] = useState<any>(null);
   const [ready, setReady] = useState(false);
 
-  // ✍️ Signature
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-
-  // 📋 Form
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    pin: generatePin(),
-    employeeCode: generateCode(),
-    createdAtUS: formatUSDate(),
-  });
-
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  /* =======================
-     LOAD PHARMACY (CLIENT)
-  ======================= */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -67,36 +50,82 @@ export default function EmployeeRegisterPage() {
     setReady(true);
   }, [router]);
 
-  // ⛔ block SSR render
   if (!ready) return null;
 
   /* =======================
-     SIGNATURE HANDLERS
+     FORM
   ======================= */
-  const startDraw = () => (drawing.current = true);
-  const endDraw = () => {
-    drawing.current = false;
-    if (canvasRef.current) {
-      const ctx = canvasRef.current.getContext("2d")!;
-      ctx.beginPath();
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    pin: generatePin(),
+    employeeCode: generateCode(),
+    createdAtUS: formatUSDate(),
+  });
+
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  /* =======================
+     SIGNATURE (MOUSE + TOUCH)
+  ======================= */
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+
+  const getPoint = (
+    e:
+      | React.MouseEvent<HTMLCanvasElement>
+      | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+
+    if ("touches" in e) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      };
     }
+
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
   };
 
-  const draw = (e: React.MouseEvent) => {
-    if (!drawing.current || !canvasRef.current) return;
+  const startDraw = (
+    e:
+      | React.MouseEvent<HTMLCanvasElement>
+      | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    e.preventDefault();
+    const { x, y } = getPoint(e);
+    const ctx = canvasRef.current!.getContext("2d")!;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    drawing.current = true;
+  };
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d")!;
-    const rect = canvas.getBoundingClientRect();
+  const drawLine = (
+    e:
+      | React.MouseEvent<HTMLCanvasElement>
+      | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    if (!drawing.current) return;
+    e.preventDefault();
+
+    const { x, y } = getPoint(e);
+    const ctx = canvasRef.current!.getContext("2d")!;
 
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#000";
-
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.lineTo(x, y);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  };
+
+  const endDraw = () => {
+    drawing.current = false;
   };
 
   const clearSignature = () => {
@@ -133,7 +162,6 @@ export default function EmployeeRegisterPage() {
         createdAt: serverTimestamp(),
       });
 
-      // 📧 EMAIL
       await fetch(EMAIL_FUNCTION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -195,7 +223,7 @@ export default function EmployeeRegisterPage() {
           className="w-full border p-2 rounded bg-gray-100 text-center tracking-widest"
         />
 
-        {/* SIGNATURE */}
+        {/* ✅ SIGNATURE – ESTE ES EL CANVAS CORRECTO */}
         <div>
           <p className="text-sm font-medium mb-1">
             Signature (finger or mouse)
@@ -204,10 +232,14 @@ export default function EmployeeRegisterPage() {
             ref={canvasRef}
             width={400}
             height={150}
-            className="border rounded w-full"
+            className="border rounded w-full touch-none"
             onMouseDown={startDraw}
+            onMouseMove={drawLine}
             onMouseUp={endDraw}
-            onMouseMove={draw}
+            onMouseLeave={endDraw}
+            onTouchStart={startDraw}
+            onTouchMove={drawLine}
+            onTouchEnd={endDraw}
           />
           <button
             onClick={clearSignature}
