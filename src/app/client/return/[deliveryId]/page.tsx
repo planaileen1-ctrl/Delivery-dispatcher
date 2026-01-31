@@ -41,6 +41,7 @@ export default function ReturnPumpsPage() {
 
   /* =======================
      LOAD ORIGINAL DELIVERY
+     + BLOCK DUPLICATE RETURN
   ======================= */
   useEffect(() => {
     const load = async () => {
@@ -48,19 +49,32 @@ export default function ReturnPumpsPage() {
         doc(db, "deliveries", deliveryId as string)
       );
 
-      if (snap.exists()) {
-        const data = {
-          id: snap.id,
-          ...(snap.data() as Omit<OriginalDelivery, "id">),
-        };
+      if (!snap.exists()) return;
 
-        setDelivery(data);
-        setSelectedPumps(data.pumpCodes || []);
+      // ⛔ bloquear si ya existe retorno
+      const q = query(
+        collection(db, "deliveries"),
+        where("type", "==", "return"),
+        where("originalDeliveryId", "==", snap.id)
+      );
+
+      const existingReturn = await getDocs(q);
+      if (!existingReturn.empty) {
+        router.push("/client/dashboard");
+        return;
       }
+
+      const data = {
+        id: snap.id,
+        ...(snap.data() as Omit<OriginalDelivery, "id">),
+      };
+
+      setDelivery(data);
+      setSelectedPumps(data.pumpCodes || []);
     };
 
     load();
-  }, [deliveryId]);
+  }, [deliveryId, router]);
 
   /* =======================
      VERIFY EXTRA PUMPS
@@ -79,6 +93,7 @@ export default function ReturnPumpsPage() {
 
   /* =======================
      SUBMIT RETURN
+     + AUTO NOTIFY DRIVERS
   ======================= */
   const submitReturn = async () => {
     if (!delivery) return;
@@ -110,34 +125,66 @@ export default function ReturnPumpsPage() {
       ...extraPumpList,
     ];
 
-    await addDoc(collection(db, "deliveries"), {
-      type: "return",
-      originalDeliveryId: delivery.id,
+    const returnRef = await addDoc(
+      collection(db, "deliveries"),
+      {
+        type: "return",
+        originalDeliveryId: delivery.id,
 
-      pharmacyId: delivery.pharmacyId,
-      clientId: delivery.clientId,
-      driverId: null,
+        pharmacyId: delivery.pharmacyId,
+        clientId: delivery.clientId,
+        driverId: null,
 
-      pumpCodes: finalPumpCodes,
+        pumpCodes: finalPumpCodes,
 
-      deliveryInfo: {
-        deliveredAt: delivery.deliveredAt || null,
-      },
+        deliveryInfo: {
+          deliveredAt: delivery.deliveredAt || null,
+        },
 
-      missingPumpsInfo:
-        selectedPumps.length < delivery.pumpCodes.length
-          ? {
-              missing: delivery.pumpCodes.filter(
-                (p) => !selectedPumps.includes(p)
-              ),
-              reason: missingReason,
-            }
-          : null,
+        missingPumpsInfo:
+          selectedPumps.length < delivery.pumpCodes.length
+            ? {
+                missing: delivery.pumpCodes.filter(
+                  (p) => !selectedPumps.includes(p)
+                ),
+                reason: missingReason,
+              }
+            : null,
 
-      status: "return_requested",
+        status: "return_requested",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }
+    );
+
+    // 🔔 notify pharmacy
+    await addDoc(collection(db, "notifications"), {
+      userId: delivery.pharmacyId,
+      role: "pharmacy",
+      title: "New return requested",
+      message: "A client requested a pump return.",
+      deliveryId: returnRef.id,
+      read: false,
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
     });
+
+    // 🔔 notify ALL drivers automatically
+    const driversSnap = await getDocs(
+      collection(db, "deliveryDrivers")
+    );
+
+    for (const d of driversSnap.docs) {
+      await addDoc(collection(db, "notifications"), {
+        userId: d.id,
+        role: "driver",
+        title: "New return available",
+        message:
+          "A pump return is ready for pickup.",
+        deliveryId: returnRef.id,
+        read: false,
+        createdAt: serverTimestamp(),
+      });
+    }
 
     router.push("/client/dashboard");
   };
