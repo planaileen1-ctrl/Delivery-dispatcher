@@ -30,18 +30,16 @@ const formatUSDate = () =>
 
 export default function EmployeeRegisterPage() {
   const router = useRouter();
+
+  // 🔐 SSR-safe state
+  const [pharmacy, setPharmacy] = useState<any>(null);
+  const [ready, setReady] = useState(false);
+
+  // ✍️ Signature
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
 
-  useEffect(() => {
-    const pharmacy = localStorage.getItem("pharmacy");
-    if (!pharmacy) router.push("/pharmacy/login");
-  }, [router]);
-
-  const pharmacy = JSON.parse(
-    localStorage.getItem("pharmacy")!
-  );
-
+  // 📋 Form
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -54,18 +52,47 @@ export default function EmployeeRegisterPage() {
   const [loading, setLoading] = useState(false);
 
   /* =======================
+     LOAD PHARMACY (CLIENT)
+  ======================= */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored = localStorage.getItem("pharmacy");
+    if (!stored) {
+      router.push("/pharmacy/login");
+      return;
+    }
+
+    setPharmacy(JSON.parse(stored));
+    setReady(true);
+  }, [router]);
+
+  // ⛔ block SSR render
+  if (!ready) return null;
+
+  /* =======================
      SIGNATURE HANDLERS
   ======================= */
   const startDraw = () => (drawing.current = true);
-  const endDraw = () => (drawing.current = false);
+  const endDraw = () => {
+    drawing.current = false;
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d")!;
+      ctx.beginPath();
+    }
+  };
 
   const draw = (e: React.MouseEvent) => {
     if (!drawing.current || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext("2d")!;
-    const rect = canvasRef.current.getBoundingClientRect();
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d")!;
+    const rect = canvas.getBoundingClientRect();
+
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#000";
+
     ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
     ctx.stroke();
     ctx.beginPath();
@@ -85,13 +112,11 @@ export default function EmployeeRegisterPage() {
     setError("");
 
     if (!form.name || !form.email) {
-      setError("All fields required");
+      setError("All fields are required");
       return;
     }
 
-    const signature = canvasRef.current
-      ?.toDataURL("image/png");
-
+    const signature = canvasRef.current?.toDataURL("image/png");
     if (!signature) {
       setError("Signature is required");
       return;
@@ -103,7 +128,7 @@ export default function EmployeeRegisterPage() {
       await addDoc(collection(db, "pharmacyEmployees"), {
         pharmacyId: pharmacy.id,
         ...form,
-        signature, // 🔥 CLAVE LEGAL
+        signature,
         active: true,
         createdAt: serverTimestamp(),
       });
@@ -129,6 +154,7 @@ export default function EmployeeRegisterPage() {
 
       router.push("/pharmacy/employee/login");
     } catch (e) {
+      console.error(e);
       setError("Error registering employee");
     } finally {
       setLoading(false);
@@ -163,7 +189,6 @@ export default function EmployeeRegisterPage() {
           className="w-full border p-2 rounded"
         />
 
-        {/* PIN */}
         <input
           value={form.pin}
           disabled
