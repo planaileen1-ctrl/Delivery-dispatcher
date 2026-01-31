@@ -2,70 +2,129 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+/* =======================
+   CONFIG
+======================= */
+const EMAIL_FUNCTION_URL =
+  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
+
+/* =======================
+   Types
+======================= */
+type Pharmacy = {
+  id: string;
+  name: string;
+  email: string;
+  representative: string;
+  whatsapp: string;
+  address: string;
+  pin: string;
+  suspended: boolean;
+};
+
+/* =======================
+   Page
+======================= */
 export default function CreatePharmacyPage() {
   const router = useRouter();
 
-  const emptyForm = {
+  const generatePin = () =>
+    Math.floor(1000 + Math.random() * 9000).toString();
+
+  const [form, setForm] = useState({
     name: "",
     email: "",
     representative: "",
     whatsapp: "",
     address: "",
-    pin: "",
-  };
+    pin: generatePin(),
+  });
 
-  const [form, setForm] = useState(emptyForm);
-  const [createdPharmacy, setCreatedPharmacy] =
-    useState<null | {
-      name: string;
-      email: string;
-      whatsapp: string;
-      pin: string;
-    }>(null);
-
+  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // 🔐 Generate PIN
-  const generatePin = () =>
-    Math.floor(1000 + Math.random() * 9000).toString();
-
+  /* =======================
+     Load pharmacies (REALTIME)
+  ======================= */
   useEffect(() => {
-    setForm((prev) => ({
-      ...prev,
-      pin: generatePin(),
-    }));
+    const q = query(
+      collection(db, "pharmacies"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list: Pharmacy[] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<Pharmacy, "id">),
+      }));
+      setPharmacies(list);
+    });
+
+    return () => unsub();
   }, []);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  /* =======================
+     Handlers
+  ======================= */
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({
       ...form,
       [e.target.name]: e.target.value,
     });
   };
 
+  const sendWelcomeEmail = async (pharmacy: {
+    name: string;
+    email: string;
+    pin: string;
+  }) => {
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height:1.6">
+        <h2>Welcome to Delivery Dispatcher</h2>
+
+        <p>Hello <strong>${pharmacy.name}</strong>,</p>
+
+        <p>Your pharmacy account has been created successfully.</p>
+
+        <p><strong>Access PIN:</strong></p>
+        <h1 style="letter-spacing:4px">${pharmacy.pin}</h1>
+
+        <p>You can now access the pharmacy system using this PIN.</p>
+
+        <p style="margin-top:30px;font-size:12px;color:#666">
+          If you did not expect this email, please contact your administrator.
+        </p>
+      </div>
+    `;
+
+    await fetch(EMAIL_FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: pharmacy.email,
+        subject: "Your Pharmacy Access PIN",
+        html,
+      }),
+    });
+  };
+
   const handleSubmit = async () => {
-    if (
-      !form.name ||
-      !form.email ||
-      !form.representative ||
-      !form.whatsapp ||
-      !form.address
-    ) {
-      setError("All fields are required");
-      return;
-    }
+    setError("");
+    setLoading(true);
 
     try {
-      setLoading(true);
-      setError("");
-
-      await addDoc(collection(db, "pharmacies"), {
+      const pharmacyData = {
         name: form.name,
         email: form.email,
         representative: form.representative,
@@ -74,128 +133,93 @@ export default function CreatePharmacyPage() {
         pin: form.pin,
         suspended: false,
         createdAt: serverTimestamp(),
-      });
+      };
 
-      // ✅ guardar farmacia creada
-      setCreatedPharmacy({
-        name: form.name,
-        email: form.email,
-        whatsapp: form.whatsapp,
-        pin: form.pin,
-      });
+      await addDoc(collection(db, "pharmacies"), pharmacyData);
 
-      // 🔁 reset form + nuevo PIN
+      // 📧 Send email (same logic as drivers)
+      if (form.email) {
+        try {
+          await sendWelcomeEmail({
+            name: pharmacyData.name,
+            email: pharmacyData.email,
+            pin: pharmacyData.pin,
+          });
+        } catch (mailError) {
+          console.error("Email error:", mailError);
+        }
+      }
+
+      // Reset form
       setForm({
-        ...emptyForm,
+        name: "",
+        email: "",
+        representative: "",
+        whatsapp: "",
+        address: "",
         pin: generatePin(),
       });
-    } catch {
-      setError("Error creating pharmacy");
+    } catch (err) {
+      console.error("Firestore error:", err);
+      setError("Error creating pharmacy.");
     } finally {
       setLoading(false);
     }
   };
 
-  // 📲 WhatsApp
-  const sendWhatsapp = () => {
-    if (!createdPharmacy) return;
-    const message = encodeURIComponent(
-      `Hello ${createdPharmacy.name}, your pharmacy access PIN is: ${createdPharmacy.pin}`
-    );
-    window.open(
-      `https://wa.me/${createdPharmacy.whatsapp}?text=${message}`,
-      "_blank"
-    );
-  };
-
-  // 📧 Email
-  const sendEmail = () => {
-    if (!createdPharmacy) return;
-    const subject = encodeURIComponent(
-      "Your Pharmacy Access PIN"
-    );
-    const body = encodeURIComponent(
-      `Hello ${createdPharmacy.name}, your pharmacy access PIN is: ${createdPharmacy.pin}`
-    );
-    window.open(
-      `mailto:${createdPharmacy.email}?subject=${subject}&body=${body}`,
-      "_blank"
-    );
-  };
-
+  /* =======================
+     UI
+  ======================= */
   return (
-    <div className="max-w-3xl mx-auto p-6">
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
 
-      {/* 🔙 BACK */}
-      <button
-        onClick={() => router.push("/admin/dashboard")}
-        className="mb-6 text-sm text-blue-600 hover:underline"
-      >
-        ← Back to Dashboard
-      </button>
+        {/* FORM */}
+        <div className="bg-white p-8 rounded-xl shadow">
+          <button
+            onClick={() => router.back()}
+            className="text-sm text-blue-600 hover:underline mb-6"
+          >
+            ← Back
+          </button>
 
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">
-        Create Pharmacy
-      </h1>
+          <h1 className="text-2xl font-bold mb-6">
+            Create Pharmacy
+          </h1>
 
-      <div className="grid md:grid-cols-2 gap-8">
+          {[
+            ["name", "Pharmacy Name"],
+            ["email", "Email"],
+            ["representative", "Representative Name"],
+            ["whatsapp", "WhatsApp (+country)"],
+            ["address", "Address"],
+          ].map(([field, label]) => (
+            <div key={field} className="mb-4">
+              <label className="block text-sm font-medium">
+                {label}
+              </label>
+              <input
+                name={field}
+                value={(form as any)[field]}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+          ))}
 
-        {/* 📋 FORM */}
-        <div className="bg-white rounded-xl shadow p-6 space-y-5">
-          <input
-            name="name"
-            placeholder="Pharmacy Name"
-            value={form.name}
-            onChange={handleChange}
-            className="w-full border rounded-lg p-3"
-          />
-
-          <input
-            name="email"
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={handleChange}
-            className="w-full border rounded-lg p-3"
-          />
-
-          <input
-            name="representative"
-            placeholder="Representative Name"
-            value={form.representative}
-            onChange={handleChange}
-            className="w-full border rounded-lg p-3"
-          />
-
-          <input
-            name="whatsapp"
-            placeholder="WhatsApp (+country)"
-            value={form.whatsapp}
-            onChange={handleChange}
-            className="w-full border rounded-lg p-3"
-          />
-
-          <input
-            name="address"
-            placeholder="Address"
-            value={form.address}
-            onChange={handleChange}
-            className="w-full border rounded-lg p-3"
-          />
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Access PIN
+          <div className="mb-6">
+            <label className="block text-sm font-medium">
+              Access PIN (auto-generated)
             </label>
             <input
               value={form.pin}
               disabled
-              className="w-full border rounded-lg p-3 text-center tracking-widest bg-gray-100 font-semibold"
+              className="w-full border rounded px-3 py-2 text-center tracking-widest bg-gray-100 font-semibold"
             />
           </div>
 
           {error && (
-            <p className="text-red-600 text-sm">
+            <p className="text-red-600 text-sm mb-4">
               {error}
             </p>
           )}
@@ -203,52 +227,50 @@ export default function CreatePharmacyPage() {
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "Creating..." : "Create Pharmacy"}
+            {loading ? "Saving..." : "Create Pharmacy & Send Email"}
           </button>
         </div>
 
-        {/* ✅ CREATED */}
-        {createdPharmacy && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-green-800">
-              Pharmacy Registered
-            </h2>
+        {/* LIST */}
+        <div className="bg-white p-8 rounded-xl shadow">
+          <h2 className="text-xl font-bold mb-4">
+            Pharmacies ({pharmacies.length})
+          </h2>
 
-            <p>
-              <strong>Name:</strong>{" "}
-              {createdPharmacy.name}
+          {pharmacies.length === 0 ? (
+            <p className="text-gray-500 text-sm">
+              No pharmacies created yet.
             </p>
+          ) : (
+            <div className="space-y-3">
+              {pharmacies.map((p) => (
+                <div
+                  key={p.id}
+                  className="border rounded-lg p-4 flex justify-between items-center"
+                >
+                  <div>
+                    <p className="font-medium">{p.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {p.email}
+                    </p>
+                  </div>
 
-            <p>
-              <strong>PIN:</strong>{" "}
-              <span className="font-bold tracking-widest">
-                {createdPharmacy.pin}
-              </span>
-            </p>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={sendWhatsapp}
-                className="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600"
-              >
-                Send WhatsApp
-              </button>
-
-              <button
-                onClick={sendEmail}
-                className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600"
-              >
-                Send Email
-              </button>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold tracking-widest">
+                      {p.pin}
+                    </p>
+                    <span className="text-xs text-green-600">
+                      Active
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
 
-            <p className="text-sm text-gray-600 pt-2">
-              You can now register another pharmacy.
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

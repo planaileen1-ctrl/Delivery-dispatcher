@@ -14,12 +14,19 @@ import {
 import { db } from "@/lib/firebase";
 
 /* =======================
+   CONFIG
+======================= */
+const EMAIL_FUNCTION_URL =
+  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
+
+/* =======================
    Types
 ======================= */
 type Client = {
   id: string;
   name: string;
   phone: string;
+  email: string;
   address: string;
   pin: string;
 };
@@ -31,16 +38,19 @@ export default function CreateClientPage() {
   const router = useRouter();
   const params = useParams();
 
-  // ✅ ROBUST pharmacyId (works with any route)
   const pharmacyId =
     (params.pharmacyId as string) ||
     (params.id as string);
+
+  const generatePin = () =>
+    Math.floor(1000 + Math.random() * 9000).toString();
 
   const [form, setForm] = useState({
     name: "",
     address: "",
     phone: "",
-    pin: "",
+    email: "",
+    pin: generatePin(),
   });
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -48,20 +58,7 @@ export default function CreateClientPage() {
   const [error, setError] = useState("");
 
   /* =======================
-     Generate PIN
-  ======================= */
-  const generatePin = () =>
-    Math.floor(1000 + Math.random() * 9000).toString();
-
-  useEffect(() => {
-    setForm((prev) => ({
-      ...prev,
-      pin: generatePin(),
-    }));
-  }, []);
-
-  /* =======================
-     Load clients (by pharmacy)
+     Load clients
   ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
@@ -77,7 +74,6 @@ export default function CreateClientPage() {
         id: doc.id,
         ...(doc.data() as Omit<Client, "id">),
       }));
-
       setClients(list);
     });
 
@@ -94,6 +90,41 @@ export default function CreateClientPage() {
     });
   };
 
+  const sendClientEmail = async (client: {
+    name: string;
+    email: string;
+    pin: string;
+  }) => {
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height:1.6">
+        <h2>Welcome to Delivery Dispatcher</h2>
+
+        <p>Hello <strong>${client.name}</strong>,</p>
+
+        <p>Your client account has been created successfully.</p>
+
+        <p><strong>Access PIN:</strong></p>
+        <h1 style="letter-spacing:4px">${client.pin}</h1>
+
+        <p>You can now use this PIN when placing orders.</p>
+
+        <p style="margin-top:30px;font-size:12px;color:#666">
+          If you did not expect this email, please contact your pharmacy.
+        </p>
+      </div>
+    `;
+
+    await fetch(EMAIL_FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: client.email,
+        subject: "Your Client Access PIN",
+        html,
+      }),
+    });
+  };
+
   const handleSubmit = async () => {
     setError("");
 
@@ -105,20 +136,37 @@ export default function CreateClientPage() {
     try {
       setLoading(true);
 
-      await addDoc(collection(db, "clients"), {
+      const clientData = {
         name: form.name || "",
         address: form.address || "",
         phone: form.phone || "",
+        email: form.email || "",
         pin: form.pin,
-        pharmacyId, // 🔗 CRITICAL & FIXED
+        pharmacyId,
         createdAt: serverTimestamp(),
-      });
+      };
 
-      // 🔁 Reset form, generate new PIN
+      await addDoc(collection(db, "clients"), clientData);
+
+      // 📧 Send email (same pattern as others)
+      if (form.email) {
+        try {
+          await sendClientEmail({
+            name: clientData.name || "Client",
+            email: clientData.email,
+            pin: clientData.pin,
+          });
+        } catch (mailError) {
+          console.error("Email error:", mailError);
+        }
+      }
+
+      // Reset form
       setForm({
         name: "",
         address: "",
         phone: "",
+        email: "",
         pin: generatePin(),
       });
     } catch (err) {
@@ -136,9 +184,7 @@ export default function CreateClientPage() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* =======================
-            FORM
-        ======================= */}
+        {/* FORM */}
         <div className="bg-white p-8 rounded-xl shadow">
           <button
             onClick={() => router.back()}
@@ -152,31 +198,17 @@ export default function CreateClientPage() {
           </h1>
 
           <div className="space-y-4">
-            <input
-              name="name"
-              placeholder="Client Name"
-              value={form.name}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2"
-            />
+            {["name", "address", "phone", "email"].map((field) => (
+              <input
+                key={field}
+                name={field}
+                placeholder={field.toUpperCase()}
+                value={(form as any)[field]}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2"
+              />
+            ))}
 
-            <input
-              name="address"
-              placeholder="Address"
-              value={form.address}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2"
-            />
-
-            <input
-              name="phone"
-              placeholder="Phone"
-              value={form.phone}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2"
-            />
-
-            {/* PIN */}
             <div>
               <label className="block text-sm font-medium mb-1">
                 Client PIN (auto-generated)
@@ -199,14 +231,12 @@ export default function CreateClientPage() {
               disabled={loading}
               className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "Saving..." : "Create Client"}
+              {loading ? "Saving..." : "Create Client & Send Email"}
             </button>
           </div>
         </div>
 
-        {/* =======================
-            CLIENTS LIST
-        ======================= */}
+        {/* LIST */}
         <div className="bg-white p-8 rounded-xl shadow">
           <h2 className="text-xl font-bold mb-4">
             Clients ({clients.length})
@@ -228,7 +258,7 @@ export default function CreateClientPage() {
                       {client.name || "Unnamed client"}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {client.phone || "No phone"}
+                      {client.email || client.phone}
                     </p>
                   </div>
 
