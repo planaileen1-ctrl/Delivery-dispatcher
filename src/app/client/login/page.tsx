@@ -1,86 +1,99 @@
 "use client";
 
 import { useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 
-export default function ClientLoginPage() {
+export default function PharmacyPinLogin() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async () => {
-    setError("");
-
-    if (!pin || pin.length !== 4) {
-      setError("Enter your 4-digit PIN");
+  const handleSubmit = async () => {
+    if (pin.length !== 4) {
+      setError("PIN must be 4 digits");
       return;
     }
 
-    const q = query(
-      collection(db, "clients"),
-      where("pin", "==", pin)
-    );
+    try {
+      setLoading(true);
+      setError("");
 
-    const snap = await getDocs(q);
+      const q = query(
+        collection(db, "pharmacies"),
+        where("pin", "==", pin)
+      );
 
-    if (snap.empty) {
-      setError("Invalid PIN");
-      return;
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        setError("Invalid PIN");
+        return;
+      }
+
+      const doc = snapshot.docs[0];
+      const pharmacy = {
+        id: doc.id,
+        name: doc.data().name,
+      };
+
+      localStorage.setItem("pharmacy", JSON.stringify(pharmacy));
+      router.push(`/pharmacy/${pharmacy.id}`);
+    } catch (err) {
+      console.error(err);
+      setError("Error validating PIN");
+    } finally {
+      setLoading(false);
     }
-
-    // ⚠️ asumimos PIN único por farmacia
-    const clientDoc = snap.docs[0];
-    const data = clientDoc.data();
-
-    // 🔐 Guardamos sesión
-    localStorage.setItem(
-      "client",
-      JSON.stringify({
-        id: clientDoc.id,
-        name: data.name,
-        pharmacyId: data.pharmacyId,
-      })
-    );
-
-    router.push("/client/dashboard");
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-6 rounded-lg shadow w-full max-w-sm">
-        <h1 className="text-xl font-bold mb-4 text-center">
-          Client Login
+      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm relative">
+
+        {/* 🔙 BACK */}
+        <button
+          onClick={() => router.push("/")}
+          className="absolute left-4 top-4 text-sm text-blue-600 hover:underline"
+        >
+          ← Back to menu
+        </button>
+
+        <h1 className="text-2xl font-bold mb-6 text-center mt-6">
+          Pharmacy Access
         </h1>
 
+        {/* 🔢 NUMERIC PIN INPUT */}
+        <input
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={4}
+          value={pin}
+          onChange={(e) =>
+            setPin(e.target.value.replace(/\D/g, ""))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit();
+          }}
+          className="w-full text-center text-2xl tracking-widest border rounded-lg p-3 mb-4"
+          placeholder="••••"
+        />
+
         {error && (
-          <p className="text-red-600 mb-3 text-sm text-center">
+          <p className="text-red-600 text-sm mb-4 text-center">
             {error}
           </p>
         )}
 
-        <input
-          type="password"
-          placeholder="4-digit PIN"
-          value={pin}
-          maxLength={4}
-          onChange={(e) =>
-            setPin(e.target.value)
-          }
-          className="w-full border rounded px-3 py-2 mb-4 text-center tracking-widest"
-        />
-
         <button
-          onClick={handleLogin}
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition"
         >
-          Login
+          {loading ? "Checking..." : "Enter"}
         </button>
       </div>
     </div>
