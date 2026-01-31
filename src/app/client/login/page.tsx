@@ -35,11 +35,9 @@ export default function ClientLoginPage() {
       return;
     }
 
-    // ⚠️ asumimos PIN único por farmacia
     const clientDoc = snap.docs[0];
     const data = clientDoc.data();
 
-    // 🔐 Guardamos sesión
     localStorage.setItem(
       "client",
       JSON.stringify({
@@ -54,8 +52,17 @@ export default function ClientLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-6 rounded-lg shadow w-full max-w-sm">
-        <h1 className="text-xl font-bold mb-4 text-center">
+      <div className="bg-white p-6 rounded-lg shadow w-full max-w-sm relative">
+
+        {/* 🔙 BACK */}
+        <button
+          onClick={() => router.push("/")}
+          className="absolute left-4 top-4 text-sm text-blue-600 hover:underline"
+        >
+          ← Back to menu
+        </button>
+
+        <h1 className="text-xl font-bold mb-4 text-center mt-6">
           Client Login
         </h1>
 
@@ -65,20 +72,26 @@ export default function ClientLoginPage() {
           </p>
         )}
 
+        {/* 🔢 NUMERIC PIN INPUT */}
         <input
           type="password"
-          placeholder="4-digit PIN"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="••••"
           value={pin}
           maxLength={4}
           onChange={(e) =>
-            setPin(e.target.value)
+            setPin(e.target.value.replace(/\D/g, ""))
           }
-          className="w-full border rounded px-3 py-2 mb-4 text-center tracking-widest"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleLogin();
+          }}
+          className="w-full border rounded px-3 py-2 mb-4 text-center tracking-widest text-xl"
         />
 
         <button
           onClick={handleLogin}
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
         >
           Login
         </button>
