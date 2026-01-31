@@ -12,30 +12,69 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-export default function PharmacyClientsPage() {
-  const { id } = useParams(); // pharmacyId
-  const router = useRouter();
-  const [clients, setClients] = useState<any[]>([]);
+/* =======================
+   Types
+======================= */
+type Client = {
+  id: string;
+  name: string;
+  address?: string;
+  pharmacyId: string;
+};
 
+export default function PharmacyClientsPage() {
+  const params = useParams();
+  const pharmacyId = params.id as string;
+
+  const router = useRouter();
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  /* =======================
+     LOAD CLIENTS
+  ======================= */
   useEffect(() => {
-    if (!id) return;
+    if (!pharmacyId) return;
 
     const q = query(
       collection(db, "clients"),
-      where("pharmacyId", "==", id)
+      where("pharmacyId", "==", pharmacyId)
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({
+      const list: Client[] = snap.docs.map((d) => ({
         id: d.id,
-        ...d.data(),
+        ...(d.data() as Omit<Client, "id">),
       }));
+
       setClients(list);
+      setLoading(false);
     });
 
     return () => unsub();
-  }, [id]);
+  }, [pharmacyId]);
 
+  /* =======================
+     DELETE CLIENT
+  ======================= */
+  const handleDelete = async (clientId: string) => {
+    const ok = confirm(
+      "Are you sure you want to delete this client?\nThis action cannot be undone."
+    );
+
+    if (!ok) return;
+
+    try {
+      await deleteDoc(doc(db, "clients", clientId));
+    } catch (err) {
+      console.error(err);
+      alert("Client could not be deleted.");
+    }
+  };
+
+  /* =======================
+     UI
+  ======================= */
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">
@@ -43,13 +82,15 @@ export default function PharmacyClientsPage() {
       </h1>
 
       <button
-        onClick={() => router.back()}
+        onClick={() => router.push(`/pharmacy/${pharmacyId}`)}
         className="text-blue-600 hover:underline mb-4"
       >
         ← Back
       </button>
 
-      {clients.length === 0 ? (
+      {loading ? (
+        <p>Loading clients...</p>
+      ) : clients.length === 0 ? (
         <p>No clients created yet.</p>
       ) : (
         <div className="space-y-4">
@@ -60,16 +101,19 @@ export default function PharmacyClientsPage() {
             >
               <div>
                 <p className="font-semibold">{c.name}</p>
-                <p className="text-sm text-gray-600">
-                  {c.address}
-                </p>
+                {c.address && (
+                  <p className="text-sm text-gray-600">
+                    {c.address}
+                  </p>
+                )}
               </div>
 
-              <div className="flex gap-3 text-sm">
+              <div className="flex gap-4 text-sm">
+                {/* EDIT */}
                 <button
                   onClick={() =>
                     router.push(
-                      `/pharmacy/${id}/clients/${c.id}`
+                      `/pharmacy/${pharmacyId}/clients/${c.id}`
                     )
                   }
                   className="text-indigo-600 hover:underline"
@@ -77,10 +121,11 @@ export default function PharmacyClientsPage() {
                   Edit
                 </button>
 
+                {/* HISTORY */}
                 <button
                   onClick={() =>
                     router.push(
-                      `/pharmacy/clients/${c.id}/history`
+                      `/pharmacy/${pharmacyId}/clients/${c.id}/history`
                     )
                   }
                   className="text-purple-600 hover:underline"
@@ -88,10 +133,9 @@ export default function PharmacyClientsPage() {
                   History
                 </button>
 
+                {/* DELETE */}
                 <button
-                  onClick={() =>
-                    deleteDoc(doc(db, "clients", c.id))
-                  }
+                  onClick={() => handleDelete(c.id)}
                   className="text-red-600 hover:underline"
                 >
                   Delete
