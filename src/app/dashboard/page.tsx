@@ -55,7 +55,7 @@ export default function DashboardPage() {
       {/* HEADER */}
       <div className="max-w-6xl mx-auto mb-14 text-center md:text-left">
         <h1 className="text-4xl font-semibold tracking-tight text-gray-900">
-          Medical Delivery System
+          Reusable Medical Asset Control System
         </h1>
         <p className="mt-3 text-gray-600 max-w-xl">
           Secure pump logistics, real-time traceability and safe medical deliveries.
