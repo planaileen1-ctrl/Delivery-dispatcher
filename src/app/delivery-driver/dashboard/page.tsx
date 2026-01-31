@@ -15,9 +15,6 @@ import {
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 
-const EMAIL_FUNCTION_URL =
-  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
-
 type Delivery = {
   id: string;
   deliveryAddress?: string;
@@ -64,7 +61,7 @@ export default function DriverDashboard() {
   };
 
   /* =======================
-     AVAILABLE (SOLO CREATED)
+     AVAILABLE (CREATED)
   ======================= */
   useEffect(() => {
     const q = query(
@@ -86,7 +83,7 @@ export default function DriverDashboard() {
   }, []);
 
   /* =======================
-     ASSIGNED TO ME
+     ASSIGNED TO ME (FIXED)
   ======================= */
   useEffect(() => {
     if (!driverId) return;
@@ -102,79 +99,61 @@ export default function DriverDashboard() {
           enrichDelivery(d.data(), d.id)
         )
       );
-      setAssigned(list);
+
+      // 🔥 filtrar aquí, NO en Firestore
+      setAssigned(
+        list.filter(
+          (d) =>
+            d.status === "assigned" ||
+            d.status === "picked_up"
+        )
+      );
     });
 
     return () => unsub();
   }, [driverId]);
 
   /* =======================
-     ACCEPT DELIVERY (SAFE)
+     ACCEPT DELIVERY
   ======================= */
   const acceptDelivery = async (d: Delivery) => {
     if (!driverId) return;
 
     const ref = doc(db, "deliveries", d.id);
     const snap = await getDoc(ref);
-
-    // 🚫 someone already took it
     if (!snap.exists()) return;
 
-    const current = snap.data();
-    if (
-      current.status !== "created" ||
-      current.driverId !== null
-    ) {
-      alert("This delivery was already taken.");
-      return;
-    }
+    if (snap.data().status !== "created") return;
 
-    // ✅ lock delivery
     await updateDoc(ref, {
       driverId,
       status: "assigned",
       updatedAt: serverTimestamp(),
     });
 
-    // 📲 notify client
     await addDoc(collection(db, "notifications"), {
       userId: d.clientId,
       role: "client",
       title: "Driver assigned",
-      message: "A driver has accepted your delivery.",
+      message: "The driver has accepted your delivery.",
       deliveryId: d.id,
       read: false,
       createdAt: serverTimestamp(),
     });
+  };
 
-    // 📧 email client
-    const clientSnap = await getDoc(
-      doc(db, "clients", d.clientId)
-    );
+  const markPickedUp = async (d: Delivery) => {
+    await updateDoc(doc(db, "deliveries", d.id), {
+      status: "picked_up",
+      pickedUpAt: serverTimestamp(),
+    });
+  };
 
-    if (clientSnap.exists()) {
-      const client = clientSnap.data();
-      if (client.email) {
-        fetch(EMAIL_FUNCTION_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            to: client.email,
-            subject: "Your delivery is on the way",
-            text: `Hello ${client.name},
-
-A driver has accepted your delivery.
-
-Address: ${d.deliveryAddress}
-Pumps: ${d.pumpCodes.join(", ")}
-
-— notificationsglobal`,
-          }),
-        }).catch(() => {});
-      }
-    }
+  const markDelivered = async (d: Delivery) => {
+    await updateDoc(doc(db, "deliveries", d.id), {
+      status: "delivered",
+      deliveredAt: serverTimestamp(),
+    });
   };
 
   return (
@@ -183,6 +162,7 @@ Pumps: ${d.pumpCodes.join(", ")}
         Driver Dashboard
       </h1>
 
+      {/* AVAILABLE */}
       <section>
         <h2 className="text-xl font-semibold mb-3">
           Available Deliveries
@@ -195,26 +175,10 @@ Pumps: ${d.pumpCodes.join(", ")}
         )}
 
         {available.map((d) => (
-          <div
-            key={d.id}
-            className="border p-4 mb-3"
-          >
-            <p>
-              <strong>Pharmacy:</strong>{" "}
-              {d.pharmacyName}
-            </p>
-            <p>
-              <strong>Client:</strong>{" "}
-              {d.clientName}
-            </p>
-            <p>
-              <strong>Address:</strong>{" "}
-              {d.deliveryAddress}
-            </p>
-            <p>
-              <strong>Pumps:</strong>{" "}
-              {d.pumpCodes.join(", ")}
-            </p>
+          <div key={d.id} className="border p-4 mb-3">
+            <p><strong>Pharmacy:</strong> {d.pharmacyName}</p>
+            <p><strong>Client:</strong> {d.clientName}</p>
+            <p><strong>Address:</strong> {d.deliveryAddress}</p>
 
             <button
               onClick={() => acceptDelivery(d)}
@@ -222,6 +186,44 @@ Pumps: ${d.pumpCodes.join(", ")}
             >
               Accept Delivery
             </button>
+          </div>
+        ))}
+      </section>
+
+      {/* ASSIGNED */}
+      <section>
+        <h2 className="text-xl font-semibold mb-3">
+          My Active Deliveries
+        </h2>
+
+        {assigned.length === 0 && (
+          <p className="text-gray-500">
+            No active deliveries.
+          </p>
+        )}
+
+        {assigned.map((d) => (
+          <div key={d.id} className="border p-4 mb-3 bg-gray-50">
+            <p><strong>Client:</strong> {d.clientName}</p>
+            <p><strong>Status:</strong> {d.status}</p>
+
+            {d.status === "assigned" && (
+              <button
+                onClick={() => markPickedUp(d)}
+                className="mt-2 bg-purple-600 text-white px-4 py-1 rounded"
+              >
+                Picked up order
+              </button>
+            )}
+
+            {d.status === "picked_up" && (
+              <button
+                onClick={() => markDelivered(d)}
+                className="mt-2 bg-green-600 text-white px-4 py-1 rounded"
+              >
+                Mark as delivered
+              </button>
+            )}
           </div>
         ))}
       </section>
