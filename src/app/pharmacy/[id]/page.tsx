@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-// 🔔 Notifications (FIXED IMPORT)
+// 🔔 Notifications
 import NotificationsBell from "@/components/NotificationsBell";
 
 // ICONS
@@ -15,6 +15,8 @@ import {
   Truck,
   PackageSearch,
   CalendarSearch,
+  Droplet,
+  Edit3,
 } from "lucide-react";
 
 /* =======================
@@ -38,8 +40,7 @@ export default function PharmacyDashboard() {
   useEffect(() => {
     const loadPharmacy = async () => {
       try {
-        const stored =
-          localStorage.getItem("pharmacy");
+        const stored = localStorage.getItem("pharmacy");
 
         if (!stored) {
           router.replace("/pharmacy/login");
@@ -54,12 +55,9 @@ export default function PharmacyDashboard() {
           return;
         }
 
-        const ref = doc(
-          db,
-          "pharmacies",
-          localPharmacy.id
+        const snap = await getDoc(
+          doc(db, "pharmacies", localPharmacy.id)
         );
-        const snap = await getDoc(ref);
 
         if (!snap.exists() || snap.data()?.suspended) {
           localStorage.removeItem("pharmacy");
@@ -73,10 +71,7 @@ export default function PharmacyDashboard() {
           suspended: snap.data().suspended,
         });
       } catch (err) {
-        console.error(
-          "Error loading pharmacy:",
-          err
-        );
+        console.error("Error loading pharmacy:", err);
         localStorage.removeItem("pharmacy");
         router.replace("/pharmacy/login");
       } finally {
@@ -105,7 +100,6 @@ export default function PharmacyDashboard() {
 
       {/* TOP BAR */}
       <div className="flex items-center justify-between mb-10">
-
         <div className="flex items-center gap-4 text-sm">
           <button
             onClick={() => {
@@ -120,39 +114,59 @@ export default function PharmacyDashboard() {
           <span className="text-gray-300">|</span>
 
           <button
-            onClick={() =>
-              router.push("/dashboard")
-            }
+            onClick={() => router.push("/dashboard")}
             className="text-blue-600 hover:underline"
           >
             Back to main dashboard
           </button>
         </div>
 
-        {/* 🔔 NOTIFICATIONS */}
         <NotificationsBell
           userId={pharmacy.id}
           role="pharmacy"
         />
       </div>
 
-      {/* TITLE */}
       <h1 className="text-3xl font-bold mb-2">
         Welcome, {pharmacy.name}
       </h1>
 
       <p className="text-gray-500 mb-10">
-        Manage clients, deliveries, returns and
-        pump traceability from your pharmacy
-        dashboard.
+        Manage clients, deliveries, returns and pump traceability.
       </p>
 
       {/* CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
 
+        {/* CREATE PUMP */}
+        <DashboardCard
+          title="Create Pump"
+          description="Register new pumps with expiration date."
+          icon={<Droplet size={28} />}
+          gradient="from-cyan-500 to-blue-600"
+          onClick={() =>
+            router.push(
+              `/pharmacy/${pharmacy.id}/create-pump`
+            )
+          }
+        />
+
+        {/* EDIT / MANAGE PUMPS */}
+        <DashboardCard
+          title="Manage Pumps"
+          description="Edit pump code, expiration date and status."
+          icon={<Edit3 size={28} />}
+          gradient="from-sky-600 to-indigo-600"
+          onClick={() =>
+            router.push(
+              `/pharmacy/${pharmacy.id}/pumps`
+            )
+          }
+        />
+
         <DashboardCard
           title="Create Client"
-          description="Register a new client quickly and easily."
+          description="Register a new client."
           icon={<UserPlus size={28} />}
           gradient="from-blue-500 to-indigo-500"
           onClick={() =>
@@ -164,7 +178,7 @@ export default function PharmacyDashboard() {
 
         <DashboardCard
           title="Manage Clients"
-          description="View, edit or remove existing clients."
+          description="View or edit clients."
           icon={<Users size={28} />}
           gradient="from-indigo-500 to-violet-500"
           onClick={() =>
@@ -176,7 +190,7 @@ export default function PharmacyDashboard() {
 
         <DashboardCard
           title="Create Delivery"
-          description="Create a new delivery order."
+          description="Create a delivery order."
           icon={<Truck size={28} />}
           gradient="from-purple-500 to-fuchsia-500"
           onClick={() =>
@@ -188,7 +202,7 @@ export default function PharmacyDashboard() {
 
         <DashboardCard
           title="View Deliveries"
-          description="Track and manage all deliveries."
+          description="Track all deliveries."
           icon={<PackageSearch size={28} />}
           gradient="from-gray-700 to-gray-900"
           onClick={() =>
@@ -198,10 +212,9 @@ export default function PharmacyDashboard() {
           }
         />
 
-        {/* 🔁 RETURNS */}
         <DashboardCard
           title="Return Confirmations"
-          description="Confirm returned pumps from drivers."
+          description="Confirm returned pumps."
           icon={<PackageSearch size={28} />}
           gradient="from-green-600 to-emerald-600"
           onClick={() =>
@@ -209,10 +222,9 @@ export default function PharmacyDashboard() {
           }
         />
 
-        {/* TRACEABILITY */}
         <DashboardCard
           title="Pump Traceability"
-          description="Track pumps by date, driver and full history."
+          description="Full pump history."
           icon={<CalendarSearch size={28} />}
           gradient="from-emerald-500 to-teal-600"
           onClick={() =>
@@ -221,14 +233,13 @@ export default function PharmacyDashboard() {
             )
           }
         />
-
       </div>
     </div>
   );
 }
 
 /* =======================
-   CARD COMPONENT
+   CARD
 ======================= */
 function DashboardCard({
   title,
@@ -246,17 +257,16 @@ function DashboardCard({
   return (
     <div
       onClick={onClick}
-      className="group cursor-pointer rounded-2xl border border-gray-200 bg-white p-6
-      transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+      className="cursor-pointer rounded-2xl border bg-white p-6
+      transition-all hover:-translate-y-1 hover:shadow-xl"
     >
       <div
-        className={`mb-4 inline-flex items-center justify-center rounded-xl
-        bg-gradient-to-br ${gradient} p-3 text-white`}
+        className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${gradient} p-3 text-white`}
       >
         {icon}
       </div>
 
-      <h2 className="text-xl font-semibold mb-1">
+      <h2 className="text-xl font-semibold">
         {title}
       </h2>
 
