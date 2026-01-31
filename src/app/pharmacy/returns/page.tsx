@@ -1,3 +1,4 @@
+// src/app/pharmacy/returns/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import {
   getDoc,
   addDoc,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -24,6 +26,14 @@ type ReturnDelivery = {
   driverId?: string;
   clientName?: string;
   clientPhone?: string;
+  deliveryInfo?: {
+    deliveredAt?: Timestamp;
+  };
+  missingPumpsInfo?: {
+    missing: string[];
+    reason: string;
+    timePassed: string;
+  } | null;
 };
 
 export default function PharmacyReturnsPage() {
@@ -56,28 +66,23 @@ export default function PharmacyReturnsPage() {
             id: d.id,
             ...(d.data() as any),
           }))
-          // ⛔ solo ocultar cuando ya fue confirmado
           .filter(
             (d) => d.status !== "received_by_pharmacy"
           )
           .map(async (delivery) => {
-            try {
-              const clientSnap = await getDoc(
-                doc(db, "clients", delivery.clientId)
-              );
+            const clientSnap = await getDoc(
+              doc(db, "clients", delivery.clientId)
+            );
 
-              if (clientSnap.exists()) {
-                return {
-                  ...delivery,
-                  clientName: clientSnap.data().name,
-                  clientPhone: clientSnap.data().phone,
-                };
-              }
-
-              return delivery;
-            } catch {
-              return delivery;
+            if (clientSnap.exists()) {
+              return {
+                ...delivery,
+                clientName: clientSnap.data().name,
+                clientPhone: clientSnap.data().phone,
+              };
             }
+
+            return delivery;
           })
       );
 
@@ -93,7 +98,6 @@ export default function PharmacyReturnsPage() {
   const confirmReception = async (
     delivery: ReturnDelivery
   ) => {
-    // ✅ cerrar flujo
     await updateDoc(
       doc(db, "deliveries", delivery.id),
       {
@@ -103,26 +107,24 @@ export default function PharmacyReturnsPage() {
       }
     );
 
-    // 🔔 Notify client
     await addDoc(collection(db, "notifications"), {
       userId: delivery.clientId,
       role: "client",
       title: "Return completed",
       message:
-        "Your pump return has been successfully received by the pharmacy.",
+        "Your pump return has been received by the pharmacy.",
       deliveryId: delivery.id,
       read: false,
       createdAt: serverTimestamp(),
     });
 
-    // 🔔 Notify driver
     if (delivery.driverId) {
       await addDoc(collection(db, "notifications"), {
         userId: delivery.driverId,
         role: "driver",
         title: "Return confirmed",
         message:
-          "The pharmacy has confirmed the return.",
+          "The pharmacy confirmed the return.",
         deliveryId: delivery.id,
         read: false,
         createdAt: serverTimestamp(),
@@ -170,6 +172,32 @@ export default function PharmacyReturnsPage() {
               </p>
             )}
 
+            <p className="mt-2">
+              <strong>Delivered at:</strong>{" "}
+              {r.deliveryInfo?.deliveredAt
+                ? r.deliveryInfo.deliveredAt
+                    .toDate()
+                    .toLocaleString()
+                : "—"}
+            </p>
+
+            {r.missingPumpsInfo && (
+              <div className="mt-2 text-sm text-red-700">
+                <p>
+                  <strong>Missing pumps:</strong>{" "}
+                  {r.missingPumpsInfo.missing.join(", ")}
+                </p>
+                <p>
+                  <strong>Reason:</strong>{" "}
+                  {r.missingPumpsInfo.reason}
+                </p>
+                <p>
+                  <strong>Time passed:</strong>{" "}
+                  {r.missingPumpsInfo.timePassed}
+                </p>
+              </div>
+            )}
+
             <p className="mt-2 font-semibold">
               Pump Codes:
             </p>
@@ -186,7 +214,6 @@ export default function PharmacyReturnsPage() {
               </span>
             </p>
 
-            {/* ✅ CONFIRM BUTTON */}
             {r.status === "returned_to_pharmacy" && (
               <button
                 onClick={() => confirmReception(r)}

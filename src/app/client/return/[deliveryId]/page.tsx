@@ -1,3 +1,4 @@
+// src/app/client/return/[deliveryId]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,15 +12,31 @@ import {
   serverTimestamp,
   query,
   where,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
+/* =======================
+   TYPES
+======================= */
+type OriginalDelivery = {
+  id: string;
+  pumpCodes: string[];
+  pharmacyId: string;
+  clientId: string;
+  deliveredAt?: Timestamp;
+};
 
 export default function ReturnPumpsPage() {
   const { deliveryId } = useParams();
   const router = useRouter();
 
-  const [delivery, setDelivery] = useState<any>(null);
+  const [delivery, setDelivery] =
+    useState<OriginalDelivery | null>(null);
+
+  const [selectedPumps, setSelectedPumps] = useState<string[]>([]);
   const [extraPumps, setExtraPumps] = useState("");
+  const [missingReason, setMissingReason] = useState("");
   const [checking, setChecking] = useState(false);
 
   /* =======================
@@ -32,9 +49,16 @@ export default function ReturnPumpsPage() {
       );
 
       if (snap.exists()) {
-        setDelivery({ id: snap.id, ...snap.data() });
+        const data = {
+          id: snap.id,
+          ...(snap.data() as Omit<OriginalDelivery, "id">),
+        };
+
+        setDelivery(data);
+        setSelectedPumps(data.pumpCodes || []);
       }
     };
+
     load();
   }, [deliveryId]);
 
@@ -47,9 +71,8 @@ export default function ReturnPumpsPage() {
         collection(db, "deliveries"),
         where("pumpCodes", "array-contains", pump)
       );
-
       const snap = await getDocs(q);
-      if (!snap.empty) return pump; // ❌ duplicated
+      if (!snap.empty) return pump;
     }
     return null;
   };
@@ -65,75 +88,57 @@ export default function ReturnPumpsPage() {
       .map((p) => p.trim())
       .filter(Boolean);
 
+    if (
+      selectedPumps.length < delivery.pumpCodes.length &&
+      !missingReason
+    ) {
+      alert("Reason is required for missing pumps.");
+      return;
+    }
+
     setChecking(true);
 
-    // 🔍 VERIFY DUPLICATES
     const duplicatedPump = await verifyExtraPumps(extraPumpList);
     if (duplicatedPump) {
-      alert(`Pump ${duplicatedPump} has already been sent before.`);
+      alert(`Pump ${duplicatedPump} already exists.`);
       setChecking(false);
       return;
     }
 
-    // ✅ MERGE PUMPS
     const finalPumpCodes = [
-      ...delivery.pumpCodes,
+      ...selectedPumps,
       ...extraPumpList,
     ];
 
-    // 📦 CREATE RETURN DELIVERY
-    const returnRef = await addDoc(
-      collection(db, "deliveries"),
-      {
-        type: "return",
-        originalDeliveryId: delivery.id,
+    await addDoc(collection(db, "deliveries"), {
+      type: "return",
+      originalDeliveryId: delivery.id,
 
-        pharmacyId: delivery.pharmacyId,
-        clientId: delivery.clientId,
-        driverId: null, // assigned later
+      pharmacyId: delivery.pharmacyId,
+      clientId: delivery.clientId,
+      driverId: null,
 
-        pumpCodes: finalPumpCodes,
+      pumpCodes: finalPumpCodes,
 
-        status: "return_requested",
+      deliveryInfo: {
+        deliveredAt: delivery.deliveredAt || null,
+      },
 
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }
-    );
+      missingPumpsInfo:
+        selectedPumps.length < delivery.pumpCodes.length
+          ? {
+              missing: delivery.pumpCodes.filter(
+                (p) => !selectedPumps.includes(p)
+              ),
+              reason: missingReason,
+            }
+          : null,
 
-    /* =======================
-       NOTIFICATIONS
-    ======================= */
-
-    // 🔔 Notify pharmacy
-    await addDoc(collection(db, "notifications"), {
-      userId: delivery.pharmacyId,
-      role: "pharmacy",
-      title: "New return requested",
-      message: "A client has requested a pump return.",
-      deliveryId: returnRef.id,
-      read: false,
+      status: "return_requested",
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
 
-    // 🔔 Notify all drivers
-    const driversSnap = await getDocs(
-      collection(db, "deliveryDrivers")
-    );
-
-    for (const d of driversSnap.docs) {
-      await addDoc(collection(db, "notifications"), {
-        userId: d.id,
-        role: "driver",
-        title: "New return available",
-        message: "A pump return is ready for pickup.",
-        deliveryId: returnRef.id,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-    }
-
-    alert("Return request sent successfully");
     router.push("/client/dashboard");
   };
 
@@ -155,29 +160,57 @@ export default function ReturnPumpsPage() {
         Return Pumps
       </h1>
 
-      {/* ORIGINAL PUMPS */}
-      <p className="font-semibold mb-2">
-        Pumps received (mandatory):
+      <p className="text-sm mb-4 text-gray-600">
+        Delivered at:{" "}
+        {delivery.deliveredAt
+          ? delivery.deliveredAt.toDate().toLocaleString()
+          : "—"}
       </p>
-      <ul className="list-disc ml-5 mb-4">
-        {delivery.pumpCodes.map((p: string) => (
-          <li key={p}>{p}</li>
+
+      <p className="font-semibold mb-2">
+        Pumps received:
+      </p>
+
+      <ul className="space-y-2 mb-4">
+        {delivery.pumpCodes.map((p) => (
+          <li key={p} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={selectedPumps.includes(p)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedPumps([...selectedPumps, p]);
+                } else {
+                  setSelectedPumps(
+                    selectedPumps.filter((x) => x !== p)
+                  );
+                }
+              }}
+            />
+            <span>{p}</span>
+          </li>
         ))}
       </ul>
 
-      <p className="text-sm text-gray-600 mb-6">
-        Received on:{" "}
-        {delivery.receivedAt?.toDate().toLocaleString()}
-      </p>
+      {selectedPumps.length <
+        delivery.pumpCodes.length && (
+        <div className="mb-6">
+          <textarea
+            placeholder="Reason for missing pumps"
+            value={missingReason}
+            onChange={(e) => setMissingReason(e.target.value)}
+            className="w-full border p-2"
+          />
+        </div>
+      )}
 
-      {/* EXTRA PUMPS */}
       <label className="block font-medium mb-2">
         Add extra pumps (optional)
       </label>
       <input
         value={extraPumps}
         onChange={(e) => setExtraPumps(e.target.value)}
-        placeholder="PMP-301, PMP-455"
+        placeholder="284, 150"
         className="w-full border p-2 mb-6"
       />
 
@@ -186,7 +219,7 @@ export default function ReturnPumpsPage() {
         disabled={checking}
         className="w-full bg-yellow-600 text-white py-3 rounded disabled:opacity-50"
       >
-        {checking ? "Checking pumps..." : "Confirm Return"}
+        {checking ? "Checking..." : "Confirm Return"}
       </button>
     </div>
   );

@@ -28,7 +28,6 @@ type DeliveryUI = {
 
 export default function ClientDashboard() {
   const [deliveries, setDeliveries] = useState<DeliveryUI[]>([]);
-  const [returnMap, setReturnMap] = useState<Record<string, boolean>>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -40,7 +39,6 @@ export default function ClientDashboard() {
 
     const client = JSON.parse(stored);
 
-    // ✅ FIX REAL: whitelist de estados visibles al cliente
     const q = query(
       collection(db, "deliveries"),
       where("clientId", "==", client.id),
@@ -54,19 +52,9 @@ export default function ClientDashboard() {
 
     const unsub = onSnapshot(q, async (snap) => {
       const result: DeliveryUI[] = [];
-      const returns: Record<string, boolean> = {};
-
-      // detectar devoluciones
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        if (data.type === "return" && data.originalDeliveryId) {
-          returns[data.originalDeliveryId] = true;
-        }
-      });
 
       for (const d of snap.docs) {
         const delivery = d.data();
-
         if (delivery.type === "return") continue;
 
         let pharmacyName = "—";
@@ -74,9 +62,7 @@ export default function ClientDashboard() {
           const phSnap = await getDoc(
             doc(db, "pharmacies", delivery.pharmacyId)
           );
-          if (phSnap.exists()) {
-            pharmacyName = phSnap.data().name;
-          }
+          if (phSnap.exists()) pharmacyName = phSnap.data().name;
         }
 
         let driverName = "—";
@@ -84,9 +70,7 @@ export default function ClientDashboard() {
           const drSnap = await getDoc(
             doc(db, "deliveryDrivers", delivery.driverId)
           );
-          if (drSnap.exists()) {
-            driverName = drSnap.data().name;
-          }
+          if (drSnap.exists()) driverName = drSnap.data().name;
         }
 
         result.push({
@@ -97,11 +81,9 @@ export default function ClientDashboard() {
           receivedAt: delivery.receivedAt,
           pharmacyName,
           driverName,
-          type: delivery.type,
         });
       }
 
-      setReturnMap(returns);
       setDeliveries(result);
     });
 
@@ -124,14 +106,10 @@ export default function ClientDashboard() {
         ← Back to menu
       </button>
 
-      <h1 className="text-2xl font-bold mb-6">
-        My Pumps
-      </h1>
+      <h1 className="text-2xl font-bold mb-6">My Pumps</h1>
 
       {deliveries.length === 0 && (
-        <p className="text-gray-500">
-          No pumps assigned.
-        </p>
+        <p className="text-gray-500">No pumps assigned.</p>
       )}
 
       <div className="space-y-4">
@@ -140,10 +118,7 @@ export default function ClientDashboard() {
             key={d.id}
             className="border rounded-lg p-5 bg-white shadow"
           >
-            <p className="font-semibold mb-2">
-              Pump Codes:
-            </p>
-
+            <p className="font-semibold mb-2">Pump Codes:</p>
             <ul className="list-disc ml-5 mb-3">
               {d.pumpCodes.map((p, i) => (
                 <li key={i}>{p}</li>
@@ -160,6 +135,15 @@ export default function ClientDashboard() {
                 className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
               >
                 I received the pumps
+              </button>
+            )}
+
+            {d.status === "received_by_client" && (
+              <button
+                onClick={() => router.push(`/client/return/${d.id}`)}
+                className="mt-3 bg-yellow-600 text-white px-4 py-2 rounded"
+              >
+                Return pumps
               </button>
             )}
           </div>
