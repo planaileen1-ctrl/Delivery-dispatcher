@@ -9,11 +9,13 @@ import {
   updateDoc,
   doc,
   getDoc,
-  addDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+
+const EMAIL_FUNCTION_URL =
+  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
 type Delivery = {
   id: string;
@@ -25,6 +27,8 @@ type Delivery = {
   driverId?: string | null;
   clientName?: string;
   pharmacyName?: string;
+  clientEmail?: string;
+  pharmacyEmail?: string;
 };
 
 export default function DriverDashboard() {
@@ -39,9 +43,31 @@ export default function DriverDashboard() {
       : null;
 
   useEffect(() => {
-    if (!driverId) router.push("/delivery-driver/login");
+    if (!driverId) {
+      router.push("/delivery-driver/login");
+    }
   }, [driverId, router]);
 
+  /* =======================
+     EMAIL HELPER (FIX TS)
+  ======================= */
+  const sendEmail = (
+    to?: string | null,
+    subject?: string,
+    text?: string
+  ) => {
+    if (!to || !subject || !text) return;
+
+    fetch(EMAIL_FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, subject, text }),
+    }).catch(() => {});
+  };
+
+  /* =======================
+     ENRICH DELIVERY
+  ======================= */
   const enrichDelivery = async (d: any, id: string) => {
     const clientSnap = await getDoc(doc(db, "clients", d.clientId));
     const pharmacySnap = await getDoc(
@@ -54,14 +80,20 @@ export default function DriverDashboard() {
       clientName: clientSnap.exists()
         ? clientSnap.data().name
         : "Unknown",
+      clientEmail: clientSnap.exists()
+        ? clientSnap.data().email
+        : undefined,
       pharmacyName: pharmacySnap.exists()
         ? pharmacySnap.data().name
         : "Unknown pharmacy",
+      pharmacyEmail: pharmacySnap.exists()
+        ? pharmacySnap.data().email
+        : undefined,
     } as Delivery;
   };
 
   /* =======================
-     AVAILABLE (CREATED)
+     AVAILABLE DELIVERIES
   ======================= */
   useEffect(() => {
     const q = query(
@@ -83,7 +115,7 @@ export default function DriverDashboard() {
   }, []);
 
   /* =======================
-     ASSIGNED TO ME (FIXED)
+     ASSIGNED TO ME
   ======================= */
   useEffect(() => {
     if (!driverId) return;
@@ -100,7 +132,6 @@ export default function DriverDashboard() {
         )
       );
 
-      // 🔥 filtrar aquí, NO en Firestore
       setAssigned(
         list.filter(
           (d) =>
@@ -114,32 +145,26 @@ export default function DriverDashboard() {
   }, [driverId]);
 
   /* =======================
-     ACCEPT DELIVERY
+     ACTIONS
   ======================= */
   const acceptDelivery = async (d: Delivery) => {
-    if (!driverId) return;
-
-    const ref = doc(db, "deliveries", d.id);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return;
-
-    if (snap.data().status !== "created") return;
-
-    await updateDoc(ref, {
+    await updateDoc(doc(db, "deliveries", d.id), {
       driverId,
       status: "assigned",
       updatedAt: serverTimestamp(),
     });
 
-    await addDoc(collection(db, "notifications"), {
-      userId: d.clientId,
-      role: "client",
-      title: "Driver assigned",
-      message: "The driver has accepted your delivery.",
-      deliveryId: d.id,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+    sendEmail(
+      d.clientEmail,
+      "Driver assigned",
+      `Your delivery has been accepted.\nAddress: ${d.deliveryAddress}`
+    );
+
+    sendEmail(
+      d.pharmacyEmail,
+      "Delivery accepted",
+      `A driver accepted the delivery for ${d.clientName}.`
+    );
   };
 
   const markPickedUp = async (d: Delivery) => {
@@ -147,6 +172,18 @@ export default function DriverDashboard() {
       status: "picked_up",
       pickedUpAt: serverTimestamp(),
     });
+
+    sendEmail(
+      d.clientEmail,
+      "Order picked up",
+      "Your order has been picked up and is on the way."
+    );
+
+    sendEmail(
+      d.pharmacyEmail,
+      "Order picked up",
+      "The driver has picked up the order."
+    );
   };
 
   const markDelivered = async (d: Delivery) => {
@@ -154,8 +191,23 @@ export default function DriverDashboard() {
       status: "delivered",
       deliveredAt: serverTimestamp(),
     });
+
+    sendEmail(
+      d.clientEmail,
+      "Order delivered",
+      "Your order has been delivered."
+    );
+
+    sendEmail(
+      d.pharmacyEmail,
+      "Order delivered",
+      "The order has been delivered to the client."
+    );
   };
 
+  /* =======================
+     UI
+  ======================= */
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-10">
       <h1 className="text-2xl font-bold">
@@ -175,8 +227,10 @@ export default function DriverDashboard() {
         )}
 
         {available.map((d) => (
-          <div key={d.id} className="border p-4 mb-3">
-            <p><strong>Pharmacy:</strong> {d.pharmacyName}</p>
+          <div
+            key={d.id}
+            className="border p-4 mb-3"
+          >
             <p><strong>Client:</strong> {d.clientName}</p>
             <p><strong>Address:</strong> {d.deliveryAddress}</p>
 
@@ -203,7 +257,10 @@ export default function DriverDashboard() {
         )}
 
         {assigned.map((d) => (
-          <div key={d.id} className="border p-4 mb-3 bg-gray-50">
+          <div
+            key={d.id}
+            className="border p-4 mb-3 bg-gray-50"
+          >
             <p><strong>Client:</strong> {d.clientName}</p>
             <p><strong>Status:</strong> {d.status}</p>
 

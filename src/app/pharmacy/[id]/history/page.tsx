@@ -6,7 +6,7 @@ import {
   collection,
   query,
   where,
-  getDocs,
+  onSnapshot,
   doc,
   getDoc,
 } from "firebase/firestore";
@@ -46,19 +46,19 @@ export default function DeliveryHistoryPage() {
   }, [pharmacyId]);
 
   /* =======================
-     LOAD HISTORY
+     LOAD HISTORY (REALTIME)
   ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
 
-    const loadHistory = async () => {
-      try {
-        const q = query(
-          collection(db, "deliveries"),
-          where("pharmacyId", "==", pharmacyId)
-        );
+    const q = query(
+      collection(db, "deliveries"),
+      where("pharmacyId", "==", pharmacyId)
+    );
 
-        const snap = await getDocs(q);
+    const unsub = onSnapshot(
+      q,
+      async (snap) => {
         const result: DeliveryUI[] = [];
 
         for (const d of snap.docs) {
@@ -75,7 +75,7 @@ export default function DeliveryHistoryPage() {
             }
           } catch {}
 
-          // 🚚 Driver (CAN BE NULL)
+          // 🚚 Driver
           let driverName = "Unassigned";
           if (data.driverId) {
             try {
@@ -107,14 +107,15 @@ export default function DeliveryHistoryPage() {
         }
 
         setDeliveries(result);
-      } catch (err) {
-        console.error("History error:", err);
-      } finally {
-        setLoading(false); // 🔥 ALWAYS
+        setLoading(false);
+      },
+      (err) => {
+        console.error("History realtime error:", err);
+        setLoading(false);
       }
-    };
+    );
 
-    loadHistory();
+    return () => unsub();
   }, [pharmacyId]);
 
   /* =======================
