@@ -18,8 +18,9 @@ import { db } from "@/lib/firebase";
 type Client = {
   id: string;
   name: string;
-  county: string;
-  state: string;
+  country?: string;
+  state?: string;
+  city?: string;
 };
 
 type Pump = {
@@ -35,6 +36,14 @@ type Employee = {
 /* =======================
    HELPERS
 ======================= */
+const generateOrderCode = () => {
+  const d = new Date();
+  return `DEL-${d
+    .toISOString()
+    .slice(0, 10)
+    .replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
+};
+
 const formatUS = (d: Date) =>
   d.toLocaleString("en-US", {
     month: "2-digit",
@@ -46,48 +55,42 @@ const formatUS = (d: Date) =>
     hour12: true,
   });
 
-const generateOrderCode = () => {
-  const d = new Date();
-  return `DEL-${d
-    .toISOString()
-    .slice(0, 10)
-    .replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
-};
-
 const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
 /* =======================
    PAGE
 ======================= */
-export default function Page() {
+export default function CreateDeliveryPage() {
   const router = useRouter();
   const params = useParams();
-  const pharmacyId = params.id as string;
+
+  const pharmacyId =
+    (params.pharmacyId as string) ||
+    (params.id as string);
 
   const [employee, setEmployee] = useState<Employee | null>(null);
-  const [now, setNow] = useState<Date | null>(null);
+  const [now, setNow] = useState(new Date());
 
   const [clients, setClients] = useState<Client[]>([]);
   const [pumps, setPumps] = useState<Pump[]>([]);
 
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedClient, setSelectedClient] =
+    useState<Client | null>(null);
   const [selectedPumps, setSelectedPumps] = useState<string[]>([]);
-
   const [searchPump, setSearchPump] = useState("");
-  const [orderCode] = useState(generateOrderCode());
 
+  const [orderCode] = useState(generateOrderCode());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   /* =======================
-     CLOCK (CLIENT ONLY)
+     CLOCK
   ======================= */
   useEffect(() => {
-    setNow(new Date());
-    const i = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(i);
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
   }, []);
 
   /* =======================
@@ -146,7 +149,7 @@ export default function Page() {
   }, [pharmacyId]);
 
   /* =======================
-     ADD PUMP (SEARCH / SCAN)
+     PUMPS
   ======================= */
   const addPump = (code: string) => {
     if (!code) return;
@@ -164,41 +167,73 @@ export default function Page() {
      CREATE DELIVERY
   ======================= */
   const handleCreate = async () => {
-    if (!selectedClient || selectedPumps.length === 0) {
-      setError("Client and pumps are required");
+    setError("");
+    setSuccess("");
+
+    if (!employee) {
+      setError("Session expired");
+      return;
+    }
+
+    if (!selectedClient) {
+      setError("Client is required");
+      return;
+    }
+
+    if (
+      !selectedClient.country ||
+      !selectedClient.state ||
+      !selectedClient.city
+    ) {
+      setError("Client location is incomplete");
+      return;
+    }
+
+    if (selectedPumps.length === 0) {
+      setError("At least one pump is required");
       return;
     }
 
     try {
       setLoading(true);
-      setError("");
 
       const deliveryRef = await addDoc(
         collection(db, "deliveries"),
         {
           orderCode,
           pharmacyId,
+
           clientId: selectedClient.id,
           clientName: selectedClient.name,
-          county: selectedClient.county,
-          state: selectedClient.state,
+
+          // 🌍 LOCATION NORMALIZED
+          country: selectedClient.country.toUpperCase(),
+          state: selectedClient.state.toLowerCase(),
+          city: selectedClient.city.toLowerCase(),
+
           pumps: selectedPumps,
+
+          // 🔥 CLAVE (SIN ESTO NO APARECE)
+          driverId: null,
+
           createdBy: {
-            employeeId: employee?.id,
-            employeeName: employee?.name,
+            employeeId: employee.id,
+            employeeName: employee.name,
           },
+
           status: "created",
           createdAt: serverTimestamp(),
         }
       );
 
-      /* NOTIFY DRIVERS (SAME COUNTY + STATE) */
+      /* 🔔 NOTIFY DRIVERS */
       const driversSnap = await getDocs(
         query(
           collection(db, "deliveryDrivers"),
           where("active", "==", true),
-          where("county", "==", selectedClient.county),
-          where("state", "==", selectedClient.state)
+          where("country", "==", selectedClient.country.toUpperCase()),
+          where("state", "==", selectedClient.state.toLowerCase()),
+          where("city", "==", selectedClient.city.toLowerCase())
         )
       );
 
@@ -222,7 +257,7 @@ export default function Page() {
             body: JSON.stringify({
               to: driver.email,
               subject: "New delivery available",
-              text: `Order: ${orderCode}\nCounty: ${selectedClient.county}`,
+              text: `Order ${orderCode} - ${selectedClient.city}`,
             }),
           }).catch(() => {});
         }
@@ -232,7 +267,7 @@ export default function Page() {
       setSelectedClient(null);
       setSelectedPumps([]);
     } catch (e) {
-      console.error(e);
+      console.error("CREATE DELIVERY ERROR:", e);
       setError("Error creating delivery");
     } finally {
       setLoading(false);
@@ -256,12 +291,11 @@ export default function Page() {
       <p className="text-sm text-gray-600">
         Employee: <strong>{employee?.name}</strong>
         <br />
-        Date & Time: {now ? formatUS(now) : "—"}
+        Date & Time: {formatUS(now)}
       </p>
 
       <p className="font-semibold">Order Code: {orderCode}</p>
 
-      {/* CLIENT */}
       <select
         className="w-full border p-2"
         value={selectedClient?.id || ""}
@@ -279,7 +313,6 @@ export default function Page() {
         ))}
       </select>
 
-      {/* SEARCH / SCAN */}
       <input
         value={searchPump}
         onChange={(e) => setSearchPump(e.target.value)}
@@ -290,7 +323,6 @@ export default function Page() {
         }}
       />
 
-      {/* SEARCH RESULTS */}
       {searchPump && (
         <div className="border rounded max-h-40 overflow-y-auto">
           {filteredPumps.map((p) => (
@@ -305,13 +337,10 @@ export default function Page() {
         </div>
       )}
 
-      {/* SELECTED */}
       <div className="border rounded p-3">
         <strong>Selected Pumps</strong>
         {selectedPumps.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No pumps added
-          </p>
+          <p className="text-sm text-gray-500">No pumps added</p>
         ) : (
           <ul className="list-disc pl-5">
             {selectedPumps.map((p) => (

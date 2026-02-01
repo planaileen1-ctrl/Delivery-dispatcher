@@ -13,25 +13,54 @@ import {
 import { db } from "@/lib/firebase";
 
 /* =======================
+   TYPES
+======================= */
+type CountryCode = "US" | "EC";
+
+/* =======================
    EMAIL CONFIG
 ======================= */
 const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
 /* =======================
-   STATES (50)
+   COUNTRIES & REGIONS
 ======================= */
-const STATES = [
-  "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
-  "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
-  "Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan",
-  "Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada",
-  "New Hampshire","New Jersey","New Mexico","New York","North Carolina",
-  "North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island",
-  "South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont",
-  "Virginia","Washington","West Virginia","Wisconsin","Wyoming",
-];
+const COUNTRIES: Record<
+  CountryCode,
+  { label: string; regions: string[] }
+> = {
+  US: {
+    label: "United States",
+    regions: [
+      "Alabama","Alaska","Arizona","Arkansas","California","Colorado",
+      "Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho",
+      "Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana",
+      "Maine","Maryland","Massachusetts","Michigan","Minnesota",
+      "Mississippi","Missouri","Montana","Nebraska","Nevada",
+      "New Hampshire","New Jersey","New Mexico","New York",
+      "North Carolina","North Dakota","Ohio","Oklahoma","Oregon",
+      "Pennsylvania","Rhode Island","South Carolina","South Dakota",
+      "Tennessee","Texas","Utah","Vermont","Virginia","Washington",
+      "West Virginia","Wisconsin","Wyoming",
+    ],
+  },
+  EC: {
+    label: "Ecuador",
+    regions: [
+      "Azuay","Bolívar","Cañar","Carchi","Chimborazo","Cotopaxi",
+      "El Oro","Esmeraldas","Galápagos","Guayas","Imbabura","Loja",
+      "Los Ríos","Manabí","Morona Santiago","Napo","Orellana",
+      "Pastaza","Pichincha","Santa Elena",
+      "Santo Domingo de los Tsáchilas","Sucumbíos",
+      "Tungurahua","Zamora Chinchipe",
+    ],
+  },
+};
 
+/* =======================
+   HELPERS
+======================= */
 const generatePin = () =>
   Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -44,9 +73,18 @@ export default function DriverRegisterPage() {
   /* =======================
      FORM
   ======================= */
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    email: string;
+    country: CountryCode;
+    state: string;
+    county: string;
+    city: string;
+    pin: string;
+  }>({
     name: "",
     email: "",
+    country: "US",
     state: "",
     county: "",
     city: "",
@@ -61,6 +99,8 @@ export default function DriverRegisterPage() {
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
+
+  const regions = COUNTRIES[form.country].regions;
 
   /* =======================
      SIGNATURE (MOUSE + TOUCH)
@@ -134,7 +174,7 @@ export default function DriverRegisterPage() {
     const html = `
       <h2>Driver Registered</h2>
       <p><strong>Name:</strong> ${form.name}</p>
-      <p><strong>Location:</strong> ${form.city}, ${form.county}, ${form.state}</p>
+      <p><strong>Location:</strong> ${form.city}, ${form.state}, ${form.country}</p>
       <hr/>
       <p><strong>Your PIN:</strong></p>
       <h1>${form.pin}</h1>
@@ -163,6 +203,7 @@ export default function DriverRegisterPage() {
     if (
       !form.name ||
       !form.email ||
+      !form.country ||
       !form.state ||
       !form.county ||
       !form.city
@@ -239,21 +280,44 @@ export default function DriverRegisterPage() {
           className="w-full border p-2 rounded"
         />
 
+        {/* COUNTRY */}
+        <select
+          name="country"
+          value={form.country}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              country: e.target.value as CountryCode,
+              state: "",
+            })
+          }
+          className="w-full border p-2 rounded"
+        >
+          {Object.entries(COUNTRIES).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+
+        {/* STATE / PROVINCE */}
         <select
           name="state"
           value={form.state}
           onChange={handleChange}
           className="w-full border p-2 rounded"
         >
-          <option value="">Select state</option>
-          {STATES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+          <option value="">Select state / province</option>
+          {regions.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
           ))}
         </select>
 
         <input
           name="county"
-          placeholder="County"
+          placeholder="County / Parish"
           value={form.county}
           onChange={handleChange}
           className="w-full border p-2 rounded"
@@ -300,9 +364,7 @@ export default function DriverRegisterPage() {
           </button>
         </div>
 
-        {error && (
-          <p className="text-red-600 text-sm">{error}</p>
-        )}
+        {error && <p className="text-red-600 text-sm">{error}</p>}
 
         <button
           type="submit"

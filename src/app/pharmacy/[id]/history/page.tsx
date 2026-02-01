@@ -12,12 +12,16 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+/* =======================
+   TYPES
+======================= */
 type DeliveryUI = {
   id: string;
+  orderCode: string;
   clientName: string;
   driverName: string;
-  deliveryAddress: string;
-  pumpCodes: string[];
+  address: string;
+  pumps: string[];
   status: string;
   createdAt?: Date;
 };
@@ -31,7 +35,7 @@ export default function DeliveryHistoryPage() {
   const [loading, setLoading] = useState(true);
 
   /* =======================
-     LOAD PHARMACY
+     LOAD PHARMACY NAME
   ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
@@ -46,7 +50,7 @@ export default function DeliveryHistoryPage() {
   }, [pharmacyId]);
 
   /* =======================
-     LOAD HISTORY (REALTIME)
+     LOAD DELIVERY HISTORY
   ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
@@ -56,64 +60,69 @@ export default function DeliveryHistoryPage() {
       where("pharmacyId", "==", pharmacyId)
     );
 
-    const unsub = onSnapshot(
-      q,
-      async (snap) => {
-        const result: DeliveryUI[] = [];
+    const unsub = onSnapshot(q, async (snap) => {
+      const result: DeliveryUI[] = [];
 
-        for (const d of snap.docs) {
-          const data = d.data();
+      for (const d of snap.docs) {
+        const data = d.data();
 
-          // 🧍 Client
-          let clientName = "Unknown";
+        /* CLIENT */
+        const clientName =
+          data.clientName ?? "Unknown";
+
+        /* DRIVER */
+        let driverName = "Unassigned";
+        if (data.driverId) {
           try {
-            const clientSnap = await getDoc(
-              doc(db, "clients", data.clientId)
+            const driverSnap = await getDoc(
+              doc(
+                db,
+                "deliveryDrivers",
+                data.driverId
+              )
             );
-            if (clientSnap.exists()) {
-              clientName = clientSnap.data().name;
+            if (driverSnap.exists()) {
+              driverName =
+                driverSnap.data().name;
             }
           } catch {}
-
-          // 🚚 Driver
-          let driverName = "Unassigned";
-          if (data.driverId) {
-            try {
-              const driverSnap = await getDoc(
-                doc(
-                  db,
-                  "deliveryDrivers",
-                  data.driverId
-                )
-              );
-              if (driverSnap.exists()) {
-                driverName =
-                  driverSnap.data().name;
-              }
-            } catch {}
-          }
-
-          result.push({
-            id: d.id,
-            clientName,
-            driverName,
-            deliveryAddress:
-              data.deliveryAddress,
-            pumpCodes: data.pumpCodes || [],
-            status: data.status,
-            createdAt:
-              data.createdAt?.toDate(),
-          });
         }
 
-        setDeliveries(result);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("History realtime error:", err);
-        setLoading(false);
+        /* NORMALIZE DATA */
+        const pumps = Array.isArray(data.pumps)
+          ? data.pumps
+          : [];
+
+        const address = [
+          data.city,
+          data.state,
+          data.country,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        result.push({
+          id: d.id,
+          orderCode: data.orderCode ?? "—",
+          clientName,
+          driverName,
+          address,
+          pumps,
+          status: data.status ?? "unknown",
+          createdAt: data.createdAt?.toDate(),
+        });
       }
-    );
+
+      /* SORT BY DATE DESC */
+      result.sort(
+        (a, b) =>
+          (b.createdAt?.getTime() || 0) -
+          (a.createdAt?.getTime() || 0)
+      );
+
+      setDeliveries(result);
+      setLoading(false);
+    });
 
     return () => unsub();
   }, [pharmacyId]);
@@ -159,18 +168,20 @@ export default function DeliveryHistoryPage() {
               <div className="flex justify-between">
                 <div>
                   <p className="font-semibold">
-                    Client: {d.clientName}
+                    Order: {d.orderCode}
                   </p>
+                  <p>Client: {d.clientName}</p>
                   <p className="text-sm text-gray-600">
                     Driver: {d.driverName}
                   </p>
                   <p className="text-sm">
-                    Address:{" "}
-                    {d.deliveryAddress}
+                    Address: {d.address || "—"}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
                     Pumps:{" "}
-                    {d.pumpCodes.join(", ")}
+                    {d.pumps.length > 0
+                      ? d.pumps.join(", ")
+                      : "—"}
                   </p>
                 </div>
 
@@ -178,11 +189,16 @@ export default function DeliveryHistoryPage() {
                   <p className="text-xs text-gray-500">
                     {d.createdAt?.toLocaleString()}
                   </p>
+
                   <span
                     className={`inline-block mt-2 px-3 py-1 text-xs rounded-full ${
-                      d.status === "delivered"
+                      d.status === "picked_up"
                         ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-700"
+                        : d.status === "accepted"
+                        ? "bg-blue-100 text-blue-700"
+                        : d.status === "created"
+                        ? "bg-gray-100 text-gray-700"
+                        : "bg-yellow-100 text-yellow-700"
                     }`}
                   >
                     {d.status.toUpperCase()}

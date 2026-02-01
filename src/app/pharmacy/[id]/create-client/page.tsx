@@ -13,20 +13,60 @@ import {
 import { db } from "@/lib/firebase";
 
 /* =======================
-   CONFIG
-======================= */
-const EMAIL_FUNCTION_URL =
-  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
-
-/* =======================
    TYPES
 ======================= */
+type CountryCode = "US" | "EC";
+
 type Client = {
   id: string;
   name: string;
   email: string;
   address: string;
   pin: string;
+  country: CountryCode;
+  state: string;
+  city: string;
+};
+
+/* =======================
+   CONFIG
+======================= */
+const EMAIL_FUNCTION_URL =
+  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
+
+/* =======================
+   COUNTRIES & REGIONS
+======================= */
+const COUNTRIES: Record<
+  CountryCode,
+  { label: string; regions: string[] }
+> = {
+  US: {
+    label: "United States",
+    regions: [
+      "Alabama","Alaska","Arizona","Arkansas","California","Colorado",
+      "Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho",
+      "Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana",
+      "Maine","Maryland","Massachusetts","Michigan","Minnesota",
+      "Mississippi","Missouri","Montana","Nebraska","Nevada",
+      "New Hampshire","New Jersey","New Mexico","New York",
+      "North Carolina","North Dakota","Ohio","Oklahoma","Oregon",
+      "Pennsylvania","Rhode Island","South Carolina","South Dakota",
+      "Tennessee","Texas","Utah","Vermont","Virginia","Washington",
+      "West Virginia","Wisconsin","Wyoming",
+    ],
+  },
+  EC: {
+    label: "Ecuador",
+    regions: [
+      "Azuay","Bolívar","Cañar","Carchi","Chimborazo","Cotopaxi",
+      "El Oro","Esmeraldas","Galápagos","Guayas","Imbabura","Loja",
+      "Los Ríos","Manabí","Morona Santiago","Napo","Orellana",
+      "Pastaza","Pichincha","Santa Elena",
+      "Santo Domingo de los Tsáchilas","Sucumbíos",
+      "Tungurahua","Zamora Chinchipe",
+    ],
+  },
 };
 
 /* =======================
@@ -35,9 +75,6 @@ type Client = {
 const generatePin = () =>
   Math.floor(1000 + Math.random() * 9000).toString();
 
-/**
- * 🇺🇸 MM/DD/YYYY hh:mm:ss AM/PM
- */
 const formatUSDateTime = (date: Date) =>
   date.toLocaleString("en-US", {
     month: "2-digit",
@@ -66,25 +103,18 @@ export default function CreateClientPage() {
   const [employee, setEmployee] = useState<any>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const emp = localStorage.getItem("employee");
-    if (emp) {
-      setEmployee(JSON.parse(emp));
-    }
+    if (emp) setEmployee(JSON.parse(emp));
   }, []);
 
   /* =======================
-     LIVE CLOCK ⏱
+     CLOCK
   ======================= */
-  const [now, setNow] = useState<Date>(new Date());
+  const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
-
-    return () => clearInterval(timer);
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
   }, []);
 
   /* =======================
@@ -94,8 +124,13 @@ export default function CreateClientPage() {
     name: "",
     address: "",
     email: "",
+    country: "US" as CountryCode,
+    state: "",
+    city: "",
     pin: generatePin(),
   });
+
+  const regions = COUNTRIES[form.country].regions;
 
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(false);
@@ -113,12 +148,12 @@ export default function CreateClientPage() {
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const list: Client[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Client, "id">),
-      }));
-
-      setClients(list);
+      setClients(
+        snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<Client, "id">),
+        }))
+      );
     });
 
     return () => unsub();
@@ -128,40 +163,9 @@ export default function CreateClientPage() {
      HANDLERS
   ======================= */
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const sendClientEmail = async (client: {
-    name: string;
-    email: string;
-    pin: string;
-  }) => {
-    if (!client.email) return;
-
-    const html = `
-      <div style="font-family:Arial;line-height:1.6">
-        <h2>Client Account Created</h2>
-        <p>Hello <strong>${client.name}</strong>,</p>
-        <p>Your client account has been created.</p>
-        <p><strong>Access PIN:</strong></p>
-        <h1 style="letter-spacing:4px">${client.pin}</h1>
-      </div>
-    `;
-
-    await fetch(EMAIL_FUNCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: client.email,
-        subject: "Your Client Access PIN",
-        html,
-      }),
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async () => {
@@ -172,40 +176,33 @@ export default function CreateClientPage() {
       return;
     }
 
+    if (!form.name || !form.email || !form.state || !form.city) {
+      setError("All fields are required.");
+      return;
+    }
+
     try {
       setLoading(true);
 
-      // ⏱ EXACT TIMESTAMP (VISIBLE = SAVED)
       const createdAtUS = formatUSDateTime(now);
 
-      const clientData = {
-        name: form.name,
-        address: form.address,
-        email: form.email,
-        pin: form.pin,
-
+      await addDoc(collection(db, "clients"), {
+        ...form,
         pharmacyId,
 
-        // 🧾 AUDIT
         createdByEmployeeId: employee.id,
         createdByEmployeeName: employee.name,
-        createdAtUS, // ← exact MM/DD/YYYY hh:mm:ss AM/PM
-
-        createdAt: serverTimestamp(), // technical
-      };
-
-      await addDoc(collection(db, "clients"), clientData);
-
-      await sendClientEmail({
-        name: clientData.name || "Client",
-        email: clientData.email,
-        pin: clientData.pin,
+        createdAtUS,
+        createdAt: serverTimestamp(),
       });
 
       setForm({
         name: "",
         address: "",
         email: "",
+        country: form.country,
+        state: "",
+        city: "",
         pin: generatePin(),
       });
     } catch (err) {
@@ -232,60 +229,45 @@ export default function CreateClientPage() {
             ← Back
           </button>
 
-          <h1 className="text-2xl font-bold mb-2">
-            Create Client
-          </h1>
+          <h1 className="text-2xl font-bold mb-2">Create Client</h1>
 
-          {/* 👤 EMPLOYEE + ⏱ CLOCK */}
           {employee && (
-            <div className="text-sm text-gray-600 mb-6 space-y-1">
-              <p>
-                <strong>Employee:</strong> {employee.name}
-              </p>
-              <p>
-                <strong>Date & Time:</strong>{" "}
-                <span className="font-mono">
-                  {formatUSDateTime(now)}
-                </span>
-              </p>
+            <div className="text-sm text-gray-600 mb-6">
+              <p><strong>Employee:</strong> {employee.name}</p>
+              <p><strong>Date & Time:</strong> {formatUSDateTime(now)}</p>
             </div>
           )}
 
           <div className="space-y-4">
-            {["name", "address", "email"].map((field) => (
-              <input
-                key={field}
-                name={field}
-                placeholder={field.toUpperCase()}
-                value={(form as any)[field]}
-                onChange={handleChange}
-                className="w-full border rounded px-3 py-2"
-              />
-            ))}
+            <input name="name" placeholder="NAME" value={form.name} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+            <input name="address" placeholder="ADDRESS" value={form.address} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+            <input name="email" placeholder="EMAIL" value={form.email} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Client PIN
-              </label>
-              <input
-                value={form.pin}
-                disabled
-                className="w-full border rounded px-3 py-2 text-center bg-gray-100 font-semibold"
-              />
-            </div>
+            {/* COUNTRY */}
+            <select name="country" value={form.country} onChange={(e) =>
+              setForm({ ...form, country: e.target.value as CountryCode, state: "" })
+            } className="w-full border px-3 py-2 rounded">
+              {Object.entries(COUNTRIES).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
 
-            {error && (
-              <p className="text-red-600 text-sm">
-                {error}
-              </p>
-            )}
+            {/* STATE */}
+            <select name="state" value={form.state} onChange={handleChange} className="w-full border px-3 py-2 rounded">
+              <option value="">Select state / province</option>
+              {regions.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
 
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg"
-            >
-              {loading ? "Saving..." : "Create Client & Send Email"}
+            <input name="city" placeholder="CITY" value={form.city} onChange={handleChange} className="w-full border px-3 py-2 rounded" />
+
+            <input value={form.pin} disabled className="w-full border px-3 py-2 rounded bg-gray-100 text-center font-semibold" />
+
+            {error && <p className="text-red-600 text-sm">{error}</p>}
+
+            <button onClick={handleSubmit} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded">
+              {loading ? "Saving..." : "Create Client"}
             </button>
           </div>
         </div>
@@ -297,28 +279,16 @@ export default function CreateClientPage() {
           </h2>
 
           {clients.length === 0 ? (
-            <p className="text-gray-500 text-sm">
-              No clients created yet.
-            </p>
+            <p className="text-gray-500 text-sm">No clients created yet.</p>
           ) : (
             <div className="space-y-3">
               {clients.map((c) => (
-                <div
-                  key={c.id}
-                  className="border rounded-lg p-4 flex justify-between"
-                >
-                  <div>
-                    <p className="font-medium">{c.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {c.email}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="font-semibold tracking-widest">
-                      {c.pin}
-                    </p>
-                  </div>
+                <div key={c.id} className="border p-4 rounded">
+                  <p className="font-medium">{c.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {c.city}, {c.state}, {c.country}
+                  </p>
+                  <p className="font-mono tracking-widest">{c.pin}</p>
                 </div>
               ))}
             </div>
