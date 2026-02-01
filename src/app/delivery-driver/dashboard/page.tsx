@@ -3,12 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   collection,
+  onSnapshot,
   query,
   where,
-  onSnapshot,
-  updateDoc,
   doc,
-  getDocs,
+  updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -20,224 +19,136 @@ type Delivery = {
   id: string;
   orderCode: string;
   clientName: string;
-  city: string;
-  pharmacyId: string;
-  createdByName: string;
-  pumps: string[];
-};
+  createdByEmployee?: string;
+  pumps: number[];
+  status: "pending" | "accepted" | "picked_up" | "delivered";
 
-type PharmacyEmployee = {
-  id: string;
-  name: string;
-};
+  pickedUpAt?: any;
+  deliveredAt?: any;
 
-/* =======================
-   CONFIG
-======================= */
-const DRIVER_ID = "driver_demo_001";
+  pharmacySignature?: string;
+  pickupDriverSignature?: string;
+
+  receiverName?: string;
+  receiverRole?: string;
+  clientSignature?: string;
+  deliveryDriverSignature?: string;
+};
 
 /* =======================
    HELPERS
 ======================= */
-const safe = (v?: string) => (v && v.trim() !== "" ? v : "—");
-
-const formatUSDate = (d: Date) =>
-  d.toLocaleString("en-US", {
+const formatDate = (ts: any) => {
+  if (!ts?.toDate) return "-";
+  return ts.toDate().toLocaleString("en-US", {
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
+};
 
 /* =======================
-   PAGE
+   SIGNATURE HOOK
 ======================= */
-export default function DriverDashboard() {
-  const [available, setAvailable] = useState<Delivery[]>([]);
-  const [pickup, setPickup] = useState<Delivery | null>(null);
-  const [delivering, setDelivering] = useState<Delivery | null>(null);
+function useSignatureCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
 
-  const [employees, setEmployees] = useState<PharmacyEmployee[]>([]);
-  const [employeeId, setEmployeeId] = useState("");
+  const getPoint = (e: any) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top,
+      };
+    }
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  const start = (e: any) => {
+    e.preventDefault();
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const { x, y } = getPoint(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    drawing.current = true;
+  };
+
+  const move = (e: any) => {
+    if (!drawing.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const { x, y } = getPoint(e);
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#000";
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const end = () => {
+    drawing.current = false;
+  };
+
+  const clear = () => {
+    const ctx = canvasRef.current!.getContext("2d")!;
+    ctx.clearRect(0, 0, 400, 150);
+  };
+
+  const getImage = () =>
+    canvasRef.current?.toDataURL("image/png") || "";
+
+  return { canvasRef, start, move, end, clear, getImage };
+}
+
+/* =======================
+   COMPONENT
+======================= */
+export default function DriverDashboardPage() {
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [active, setActive] = useState<Delivery | null>(null);
 
   const [receiverName, setReceiverName] = useState("");
   const [receiverRole, setReceiverRole] = useState("");
 
-  const [nowUS, setNowUS] = useState(formatUSDate(new Date()));
+  const pharmacySig = useSignatureCanvas();
+  const pickupDriverSig = useSignatureCanvas();
+  const clientSig = useSignatureCanvas();
+  const deliveryDriverSig = useSignatureCanvas();
 
   /* =======================
-     SIGNATURE CANVAS
-  ======================= */
-  const empCanvasRef = useRef<HTMLCanvasElement>(null);
-  const drvCanvasRef = useRef<HTMLCanvasElement>(null);
-  const recvCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  const drawing = useRef(false);
-  const empSigned = useRef(false);
-  const drvSigned = useRef(false);
-  const recvSigned = useRef(false);
-
-  /* =======================
-     CLOCK
-  ======================= */
-  useEffect(() => {
-    const t = setInterval(
-      () => setNowUS(formatUSDate(new Date())),
-      60000
-    );
-    return () => clearInterval(t);
-  }, []);
-
-  /* =======================
-     AVAILABLE DELIVERIES
+     LOAD DELIVERIES
   ======================= */
   useEffect(() => {
     const q = query(
       collection(db, "deliveries"),
-      where("status", "==", "created")
+      where("status", "in", ["pending", "accepted", "picked_up"])
     );
 
     return onSnapshot(q, (snap) => {
-      setAvailable(
-        snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            orderCode: safe(data.orderCode),
-            clientName: safe(data.clientName),
-            city: safe(data.city),
-            pharmacyId: data.pharmacyId,
-            createdByName: safe(data.createdBy?.employeeName),
-            pumps: data.pumps || [],
-          };
-        })
-      );
-    });
-  }, []);
+      const list: Delivery[] = [];
+      let current: Delivery | null = null;
 
-  /* =======================
-     PICKUP (accepted)
-  ======================= */
-  useEffect(() => {
-    const q = query(
-      collection(db, "deliveries"),
-      where("driverId", "==", DRIVER_ID),
-      where("status", "==", "accepted")
-    );
-
-    return onSnapshot(q, (snap) => {
-      if (snap.empty) {
-        setPickup(null);
-        return;
-      }
-
-      const d = snap.docs[0];
-      const data = d.data();
-
-      setPickup({
-        id: d.id,
-        orderCode: safe(data.orderCode),
-        clientName: safe(data.clientName),
-        city: safe(data.city),
-        pharmacyId: data.pharmacyId,
-        createdByName: safe(data.createdBy?.employeeName),
-        pumps: data.pumps || [],
+      snap.forEach((d) => {
+        const data = { id: d.id, ...d.data() } as Delivery;
+        if (data.status === "accepted" || data.status === "picked_up") {
+          current = data;
+        } else {
+          list.push(data);
+        }
       });
+
+      setDeliveries(list);
+      setActive(current);
     });
   }, []);
-
-  /* =======================
-     DELIVERING (picked_up)
-  ======================= */
-  useEffect(() => {
-    const q = query(
-      collection(db, "deliveries"),
-      where("driverId", "==", DRIVER_ID),
-      where("status", "==", "picked_up")
-    );
-
-    return onSnapshot(q, (snap) => {
-      if (snap.empty) {
-        setDelivering(null);
-        return;
-      }
-
-      const d = snap.docs[0];
-      const data = d.data();
-
-      setDelivering({
-        id: d.id,
-        orderCode: safe(data.orderCode),
-        clientName: safe(data.clientName),
-        city: safe(data.city),
-        pharmacyId: data.pharmacyId,
-        createdByName: safe(data.createdBy?.employeeName),
-        pumps: data.pumps || [],
-      });
-    });
-  }, []);
-
-  /* =======================
-     LOAD EMPLOYEES
-  ======================= */
-  useEffect(() => {
-    if (!pickup?.pharmacyId) return;
-
-    getDocs(
-      query(
-        collection(db, "pharmacyEmployees"),
-        where("pharmacyId", "==", pickup.pharmacyId),
-        where("active", "==", true)
-      )
-    ).then((snap) =>
-      setEmployees(
-        snap.docs.map((d) => ({
-          id: d.id,
-          name: d.data().name,
-        }))
-      )
-    );
-  }, [pickup?.pharmacyId]);
-
-  /* =======================
-     DRAW HELPERS
-  ======================= */
-  const getPoint = (e: any, c: HTMLCanvasElement) => {
-    const r = c.getBoundingClientRect();
-    const p = e.touches ? e.touches[0] : e;
-    return { x: p.clientX - r.left, y: p.clientY - r.top };
-  };
-
-  const startDraw =
-    (ref: React.RefObject<HTMLCanvasElement>, signed: any) =>
-    (e: any) => {
-      e.preventDefault();
-      const canvas = ref.current!;
-      const ctx = canvas.getContext("2d")!;
-      const { x, y } = getPoint(e, canvas);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      drawing.current = true;
-      signed.current = true;
-    };
-
-  const drawLine =
-    (ref: React.RefObject<HTMLCanvasElement>) =>
-    (e: any) => {
-      if (!drawing.current) return;
-      e.preventDefault();
-      const canvas = ref.current!;
-      const ctx = canvas.getContext("2d")!;
-      const { x, y } = getPoint(e, canvas);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    };
-
-  const endDraw = () => (drawing.current = false);
 
   /* =======================
      ACTIONS
@@ -245,184 +156,193 @@ export default function DriverDashboard() {
   const acceptDelivery = async (d: Delivery) => {
     await updateDoc(doc(db, "deliveries", d.id), {
       status: "accepted",
-      driverId: DRIVER_ID,
-      acceptedAt: serverTimestamp(),
     });
   };
 
   const confirmPickup = async () => {
-    if (!pickup || !employeeId || !empSigned.current || !drvSigned.current) {
-      alert("Faltan datos o firmas");
+    if (!active) return;
+
+    const pharmacySignature = pharmacySig.getImage();
+    const driverSignature = pickupDriverSig.getImage();
+
+    if (!pharmacySignature || !driverSignature) {
+      alert("Both pharmacy and driver signatures are required");
       return;
     }
 
-    await updateDoc(doc(db, "deliveries", pickup.id), {
+    await updateDoc(doc(db, "deliveries", active.id), {
       status: "picked_up",
+      pharmacySignature,
+      pickupDriverSignature: driverSignature,
       pickedUpAt: serverTimestamp(),
-      pharmacyHandoff: {
-        employeeId,
-        employeeSignature:
-          empCanvasRef.current!.toDataURL("image/png"),
-        driverSignature:
-          drvCanvasRef.current!.toDataURL("image/png"),
-        signedAtUS: nowUS,
-        signedAt: serverTimestamp(),
-      },
     });
   };
 
   const confirmDelivery = async () => {
-    if (
-      !delivering ||
-      !receiverName ||
-      !receiverRole ||
-      !recvSigned.current
-    ) {
-      alert("Faltan datos o firma del receptor");
+    if (!active) return;
+
+    if (!receiverName || !receiverRole) {
+      alert("Receiver name and role are required");
       return;
     }
 
-    await updateDoc(doc(db, "deliveries", delivering.id), {
+    const clientSignature = clientSig.getImage();
+    const driverSignature = deliveryDriverSig.getImage();
+
+    if (!clientSignature || !driverSignature) {
+      alert("Both client and driver signatures are required");
+      return;
+    }
+
+    await updateDoc(doc(db, "deliveries", active.id), {
       status: "delivered",
+      receiverName,
+      receiverRole,
+      clientSignature,
+      deliveryDriverSignature: driverSignature,
       deliveredAt: serverTimestamp(),
-      clientHandoff: {
-        receiverName,
-        receiverRole,
-        receiverSignature:
-          recvCanvasRef.current!.toDataURL("image/png"),
-        signedAtUS: nowUS,
-        signedAt: serverTimestamp(),
-      },
     });
 
-    alert("Entrega finalizada correctamente");
+    setReceiverName("");
+    setReceiverRole("");
   };
 
   /* =======================
-     UI STATES
+     UI
   ======================= */
-
-  /* ---------- DELIVERY TO CLIENT ---------- */
-  if (delivering) {
-    return (
-      <div className="p-6 max-w-xl mx-auto space-y-3">
-        <h1 className="text-xl font-bold">Entrega al cliente</h1>
-
-        <p><b>Order:</b> {delivering.orderCode}</p>
-        <p><b>Client:</b> {delivering.clientName}</p>
-        <p><b>City:</b> {delivering.city}</p>
-        <p><b>Pumps:</b> {delivering.pumps.join(", ")}</p>
-        <p><b>Date & Time:</b> {nowUS}</p>
-
-        <input
-          placeholder="Nombre receptor"
-          className="w-full border p-2"
-          value={receiverName}
-          onChange={(e) => setReceiverName(e.target.value)}
-        />
-
-        <input
-          placeholder="Cargo"
-          className="w-full border p-2"
-          value={receiverRole}
-          onChange={(e) => setReceiverRole(e.target.value)}
-        />
-
-        <p className="font-medium">Firma receptor</p>
-        <canvas
-          ref={recvCanvasRef}
-          width={400}
-          height={120}
-          className="border w-full"
-          onMouseDown={startDraw(recvCanvasRef, recvSigned)}
-          onMouseMove={drawLine(recvCanvasRef)}
-          onMouseUp={endDraw}
-        />
-
-        <button
-          onClick={confirmDelivery}
-          className="bg-green-600 text-white px-6 py-2 rounded"
-        >
-          Confirmar entrega
-        </button>
-      </div>
-    );
-  }
-
-  /* ---------- PICKUP ---------- */
-  if (pickup) {
-    return (
-      <div className="p-6 max-w-xl mx-auto space-y-3">
-        <h1 className="text-xl font-bold">Retiro en farmacia</h1>
-
-        <p><b>Order:</b> {pickup.orderCode}</p>
-        <p><b>Pumps:</b> {pickup.pumps.join(", ")}</p>
-        <p><b>Date & Time:</b> {nowUS}</p>
-
-        <select
-          value={employeeId}
-          onChange={(e) => setEmployeeId(e.target.value)}
-          className="w-full border p-2"
-        >
-          <option value="">Seleccione empleada</option>
-          {employees.map((e) => (
-            <option key={e.id} value={e.id}>{e.name}</option>
-          ))}
-        </select>
-
-        <p>Firma empleada</p>
-        <canvas
-          ref={empCanvasRef}
-          width={400}
-          height={120}
-          className="border w-full"
-          onMouseDown={startDraw(empCanvasRef, empSigned)}
-          onMouseMove={drawLine(empCanvasRef)}
-          onMouseUp={endDraw}
-        />
-
-        <p>Firma conductor</p>
-        <canvas
-          ref={drvCanvasRef}
-          width={400}
-          height={120}
-          className="border w-full"
-          onMouseDown={startDraw(drvCanvasRef, drvSigned)}
-          onMouseMove={drawLine(drvCanvasRef)}
-          onMouseUp={endDraw}
-        />
-
-        <button
-          onClick={confirmPickup}
-          className="bg-green-600 text-white px-6 py-2 rounded"
-        >
-          Confirmar retiro
-        </button>
-      </div>
-    );
-  }
-
-  /* ---------- AVAILABLE ---------- */
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Available Deliveries</h1>
+    <div className="max-w-3xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Driver Dashboard</h1>
 
-      {available.length === 0 && <p>No hay deliveries</p>}
+      {active && (
+        <div className="border p-4 rounded space-y-3">
+          <h2 className="font-semibold text-lg">Current Delivery</h2>
 
-      {available.map((d) => (
-        <div key={d.id} className="border p-4 rounded mb-3">
-          <p><b>Order:</b> {d.orderCode}</p>
-          <p><b>Client:</b> {d.clientName}</p>
-          <p><b>Pumps:</b> {d.pumps.join(", ")}</p>
+          <p><b>Order:</b> {active.orderCode}</p>
+          <p><b>Client:</b> {active.clientName}</p>
+          <p><b>Created by employee:</b> {active.createdByEmployee}</p>
+          <p><b>Pumps:</b> {active.pumps.join(", ")}</p>
+          <p><b>Status:</b> {active.status}</p>
 
-          <button
-            onClick={() => acceptDelivery(d)}
-            className="mt-2 bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Accept
-          </button>
+          <p><b>Picked up at:</b> {formatDate(active.pickedUpAt)}</p>
+          <p><b>Delivered at:</b> {formatDate(active.deliveredAt)}</p>
+
+          {active.status === "accepted" && (
+            <>
+              <p className="font-semibold">Pharmacy Signature</p>
+              <canvas
+                ref={pharmacySig.canvasRef}
+                width={400}
+                height={150}
+                className="border"
+                onMouseDown={pharmacySig.start}
+                onMouseMove={pharmacySig.move}
+                onMouseUp={pharmacySig.end}
+                onMouseLeave={pharmacySig.end}
+                onTouchStart={pharmacySig.start}
+                onTouchMove={pharmacySig.move}
+                onTouchEnd={pharmacySig.end}
+              />
+              <button onClick={pharmacySig.clear} className="text-red-600 text-sm">Clear</button>
+
+              <p className="font-semibold">Driver Signature</p>
+              <canvas
+                ref={pickupDriverSig.canvasRef}
+                width={400}
+                height={150}
+                className="border"
+                onMouseDown={pickupDriverSig.start}
+                onMouseMove={pickupDriverSig.move}
+                onMouseUp={pickupDriverSig.end}
+                onMouseLeave={pickupDriverSig.end}
+                onTouchStart={pickupDriverSig.start}
+                onTouchMove={pickupDriverSig.move}
+                onTouchEnd={pickupDriverSig.end}
+              />
+              <button onClick={pickupDriverSig.clear} className="text-red-600 text-sm">Clear</button>
+
+              <button
+                onClick={confirmPickup}
+                className="w-full bg-orange-600 text-white py-2 rounded"
+              >
+                Confirm Pickup (WITH SIGNATURES)
+              </button>
+            </>
+          )}
+
+          {active.status === "picked_up" && (
+            <>
+              <input
+                placeholder="Receiver name"
+                value={receiverName}
+                onChange={(e) => setReceiverName(e.target.value)}
+                className="border p-2 w-full"
+              />
+              <input
+                placeholder="Receiver role / occupation"
+                value={receiverRole}
+                onChange={(e) => setReceiverRole(e.target.value)}
+                className="border p-2 w-full"
+              />
+
+              <p className="font-semibold">Client Signature</p>
+              <canvas
+                ref={clientSig.canvasRef}
+                width={400}
+                height={150}
+                className="border"
+                onMouseDown={clientSig.start}
+                onMouseMove={clientSig.move}
+                onMouseUp={clientSig.end}
+                onMouseLeave={clientSig.end}
+                onTouchStart={clientSig.start}
+                onTouchMove={clientSig.move}
+                onTouchEnd={clientSig.end}
+              />
+              <button onClick={clientSig.clear} className="text-red-600 text-sm">Clear</button>
+
+              <p className="font-semibold">Driver Signature</p>
+              <canvas
+                ref={deliveryDriverSig.canvasRef}
+                width={400}
+                height={150}
+                className="border"
+                onMouseDown={deliveryDriverSig.start}
+                onMouseMove={deliveryDriverSig.move}
+                onMouseUp={deliveryDriverSig.end}
+                onMouseLeave={deliveryDriverSig.end}
+                onTouchStart={deliveryDriverSig.start}
+                onTouchMove={deliveryDriverSig.move}
+                onTouchEnd={deliveryDriverSig.end}
+              />
+              <button onClick={deliveryDriverSig.clear} className="text-red-600 text-sm">Clear</button>
+
+              <button
+                onClick={confirmDelivery}
+                className="w-full bg-green-600 text-white py-2 rounded"
+              >
+                Confirm Delivery (WITH SIGNATURES)
+              </button>
+            </>
+          )}
         </div>
-      ))}
+      )}
+
+      <div className="space-y-3">
+        <h2 className="font-semibold">Available Deliveries</h2>
+        {deliveries.length === 0 && <p>No deliveries available</p>}
+        {deliveries.map((d) => (
+          <div key={d.id} className="border p-3 rounded">
+            <p>{d.orderCode}</p>
+            <button
+              onClick={() => acceptDelivery(d)}
+              className="bg-blue-600 text-white px-4 py-1 rounded"
+            >
+              Accept
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

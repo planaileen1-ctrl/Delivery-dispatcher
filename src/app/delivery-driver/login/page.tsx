@@ -2,27 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export default function DriverLoginPage() {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (pin.length !== 4) {
-      setError("PIN must be exactly 4 digits");
+    if (!pin) {
+      setError("PIN requerido");
       return;
     }
 
-    setLoading(true);
-
     try {
+      setLoading(true);
+
       const q = query(
         collection(db, "deliveryDrivers"),
         where("pin", "==", pin),
@@ -32,69 +38,77 @@ export default function DriverLoginPage() {
       const snap = await getDocs(q);
 
       if (snap.empty) {
-        setError("Invalid PIN or inactive driver");
-        setLoading(false);
+        setError("PIN inválido o conductor inactivo");
         return;
       }
 
-      const driver = snap.docs[0];
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
 
-      localStorage.setItem("driverId", driver.id);
-      localStorage.setItem("driverName", driver.data().name);
+      // ✅ GUARDAR DRIVER REAL
+      localStorage.setItem(
+        "driver",
+        JSON.stringify({
+          id: docSnap.id,
+          name: data.name,
+          email: data.email,
+          country: data.country,
+          state: data.state,
+          city: data.city,
+        })
+      );
 
       router.push("/delivery-driver/dashboard");
     } catch (err) {
       console.error(err);
-      setError("Login error. Please try again.");
+      setError("Error al iniciar sesión");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <form
-        onSubmit={handleLogin}
-        className="bg-white p-6 rounded shadow w-80 space-y-4"
+        onSubmit={handleSubmit}
+        className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm space-y-4"
       >
-        <h1 className="text-xl font-bold text-center">
+        <h1 className="text-2xl font-bold text-center">
           Driver Access
         </h1>
 
         <input
           type="password"
-          inputMode="numeric"
-          maxLength={4}
+          placeholder="Enter PIN"
           value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-          className="border w-full p-2 text-center text-lg tracking-widest"
-          placeholder="••••"
-          required
+          onChange={(e) => setPin(e.target.value)}
+          className="w-full border p-2 rounded text-center tracking-widest"
         />
 
         {error && (
-          <p className="text-red-500 text-sm text-center">
+          <p className="text-red-600 text-sm text-center">
             {error}
           </p>
         )}
 
         <button
+          type="submit"
           disabled={loading}
-          className="bg-orange-500 text-white w-full py-2 rounded disabled:opacity-50"
+          className="w-full bg-orange-600 text-white py-2 rounded"
         >
           {loading ? "Checking..." : "Enter"}
         </button>
 
-        {/* 🔹 Registro */}
-        <div className="text-center pt-2">
-          <button
-            type="button"
-            onClick={() => router.push("/delivery-driver/register")}
-            className="text-sm text-gray-600 underline hover:text-orange-500"
+        {/* ✅ LINK DE REGISTRO (NUNCA SE BORRA) */}
+        <p className="text-sm text-center">
+          ¿No tienes cuenta?{" "}
+          <a
+            href="/delivery-driver/register"
+            className="text-blue-600 underline"
           >
             Register as a Driver
-          </button>
-        </div>
+          </a>
+        </p>
       </form>
     </div>
   );

@@ -197,6 +197,10 @@ export default function CreateDeliveryPage() {
     try {
       setLoading(true);
 
+      const country = selectedClient.country.trim().toLowerCase();
+      const state = selectedClient.state.trim().toLowerCase();
+      const city = selectedClient.city.trim().toLowerCase();
+
       const deliveryRef = await addDoc(
         collection(db, "deliveries"),
         {
@@ -206,14 +210,11 @@ export default function CreateDeliveryPage() {
           clientId: selectedClient.id,
           clientName: selectedClient.name,
 
-          // 🌍 LOCATION NORMALIZED
-          country: selectedClient.country.toUpperCase(),
-          state: selectedClient.state.toLowerCase(),
-          city: selectedClient.city.toLowerCase(),
+          country,
+          state,
+          city,
 
           pumps: selectedPumps,
-
-          // 🔥 CLAVE (SIN ESTO NO APARECE)
           driverId: null,
 
           createdBy: {
@@ -231,9 +232,9 @@ export default function CreateDeliveryPage() {
         query(
           collection(db, "deliveryDrivers"),
           where("active", "==", true),
-          where("country", "==", selectedClient.country.toUpperCase()),
-          where("state", "==", selectedClient.state.toLowerCase()),
-          where("city", "==", selectedClient.city.toLowerCase())
+          where("country", "==", country),
+          where("state", "==", state),
+          where("city", "==", city)
         )
       );
 
@@ -257,7 +258,7 @@ export default function CreateDeliveryPage() {
             body: JSON.stringify({
               to: driver.email,
               subject: "New delivery available",
-              text: `Order ${orderCode} - ${selectedClient.city}`,
+              text: `Order ${orderCode} - ${city}`,
             }),
           }).catch(() => {});
         }

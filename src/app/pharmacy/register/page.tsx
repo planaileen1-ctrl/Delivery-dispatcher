@@ -15,12 +15,6 @@ import { db } from "@/lib/firebase";
 type CountryCode = "US" | "EC";
 
 /* =======================
-   EMAIL CONFIG
-======================= */
-const EMAIL_FUNCTION_URL =
-  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
-
-/* =======================
    COUNTRIES & REGIONS
 ======================= */
 const COUNTRIES: Record<
@@ -48,8 +42,9 @@ const COUNTRIES: Record<
       "Azuay","Bolívar","Cañar","Carchi","Chimborazo","Cotopaxi",
       "El Oro","Esmeraldas","Galápagos","Guayas","Imbabura","Loja",
       "Los Ríos","Manabí","Morona Santiago","Napo","Orellana",
-      "Pastaza","Pichincha","Santa Elena","Santo Domingo de los Tsáchilas",
-      "Sucumbíos","Tungurahua","Zamora Chinchipe",
+      "Pastaza","Pichincha","Santa Elena",
+      "Santo Domingo de los Tsáchilas","Sucumbíos",
+      "Tungurahua","Zamora Chinchipe",
     ],
   },
 };
@@ -83,10 +78,8 @@ export default function PharmacyRegisterPage() {
     name: string;
     email: string;
     representativeName: string;
-    address: string;
     country: CountryCode;
     state: string;
-    county: string;
     city: string;
     pin: string;
     createdAtUS: string;
@@ -94,10 +87,8 @@ export default function PharmacyRegisterPage() {
     name: "",
     email: "",
     representativeName: "",
-    address: "",
     country: "US",
     state: "",
-    county: "",
     city: "",
     pin: pinRef.current,
     createdAtUS: dateRef.current,
@@ -106,13 +97,13 @@ export default function PharmacyRegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const regions = COUNTRIES[form.country].regions;
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-  const regions = COUNTRIES[form.country].regions;
 
   /* =======================
      SUBMIT
@@ -124,7 +115,6 @@ export default function PharmacyRegisterPage() {
       !form.name ||
       !form.email ||
       !form.representativeName ||
-      !form.address ||
       !form.state ||
       !form.city
     ) {
@@ -137,6 +127,9 @@ export default function PharmacyRegisterPage() {
 
       await addDoc(collection(db, "pharmacies"), {
         ...form,
+        country: form.country,
+        state: form.state.toLowerCase(),
+        city: form.city.toLowerCase(),
         suspended: false,
         createdAt: serverTimestamp(),
       });
@@ -154,47 +147,96 @@ export default function PharmacyRegisterPage() {
      UI
   ======================= */
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <div className="w-1/2 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-lg space-y-4">
-          <h1 className="text-2xl font-bold text-center">
-            Register Pharmacy
-          </h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-lg space-y-4">
+        <h1 className="text-2xl font-bold text-center">
+          Register Pharmacy
+        </h1>
 
-          <input name="name" placeholder="Pharmacy name" value={form.name} onChange={handleChange} className="w-full border p-2 rounded" />
-          <input name="email" placeholder="Email" value={form.email} onChange={handleChange} className="w-full border p-2 rounded" />
-          <input name="representativeName" placeholder="Representative name" value={form.representativeName} onChange={handleChange} className="w-full border p-2 rounded" />
-          <input name="address" placeholder="Address" value={form.address} onChange={handleChange} className="w-full border p-2 rounded" />
+        <input
+          name="name"
+          placeholder="Pharmacy name"
+          value={form.name}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
 
-          <select
-            name="country"
-            value={form.country}
-            onChange={(e) =>
-              setForm({ ...form, country: e.target.value as CountryCode, state: "" })
-            }
-            className="w-full border p-2 rounded"
-          >
-            {Object.entries(COUNTRIES).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
-            ))}
-          </select>
+        <input
+          name="email"
+          placeholder="Email"
+          value={form.email}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
 
-          <select name="state" value={form.state} onChange={handleChange} className="w-full border p-2 rounded">
-            <option value="">Select state / province</option>
-            {regions.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
+        <input
+          name="representativeName"
+          placeholder="Representative name"
+          value={form.representativeName}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
 
-          <input name="county" placeholder="County / Parish" value={form.county} onChange={handleChange} className="w-full border p-2 rounded" />
-          <input name="city" placeholder="City" value={form.city} onChange={handleChange} className="w-full border p-2 rounded" />
+        {/* COUNTRY */}
+        <select
+          name="country"
+          value={form.country}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              country: e.target.value as CountryCode,
+              state: "",
+            })
+          }
+          className="w-full border p-2 rounded"
+        >
+          {Object.entries(COUNTRIES).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v.label}
+            </option>
+          ))}
+        </select>
 
-          <button onClick={handleSubmit} disabled={loading} className="w-full bg-green-600 text-white py-3 rounded">
-            {loading ? "Saving..." : "Register Pharmacy"}
-          </button>
+        {/* STATE */}
+        <select
+          name="state"
+          value={form.state}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        >
+          <option value="">Select state / province</option>
+          {regions.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
 
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-        </div>
+        {/* CITY */}
+        <input
+          name="city"
+          placeholder="City"
+          value={form.city}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
+
+        {/* PIN */}
+        <input
+          value={`Access PIN: ${form.pin}`}
+          disabled
+          className="w-full border p-2 rounded bg-gray-100 text-center tracking-widest"
+        />
+
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-green-600 text-white py-3 rounded"
+        >
+          {loading ? "Saving..." : "Register Pharmacy"}
+        </button>
+
+        {error && <p className="text-red-600 text-sm">{error}</p>}
       </div>
     </div>
   );
