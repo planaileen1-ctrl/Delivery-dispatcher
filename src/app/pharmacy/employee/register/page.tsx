@@ -1,17 +1,23 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   collection,
   addDoc,
   serverTimestamp,
+  query,
+  where,
+  getDocs,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
+/* =======================
+   HELPERS
+======================= */
 const generatePin = () =>
   Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -32,14 +38,9 @@ export default function EmployeeRegisterPage() {
   const router = useRouter();
 
   /* =======================
-     SESSION (SSR SAFE)
-  ======================= */
-  const [pharmacy, setPharmacy] = useState<any>(null);
-  const [ready, setReady] = useState(false);
-
-  /* =======================
      FORM
   ======================= */
+  const [pharmacyPin, setPharmacyPin] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -52,30 +53,11 @@ export default function EmployeeRegisterPage() {
   const [loading, setLoading] = useState(false);
 
   /* =======================
-     SIGNATURE (MOUSE + TOUCH)
+     SIGNATURE
   ======================= */
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
 
-  /* =======================
-     LOAD SESSION
-  ======================= */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const stored = localStorage.getItem("pharmacy");
-    if (!stored) {
-      router.push("/pharmacy/login");
-      return;
-    }
-
-    setPharmacy(JSON.parse(stored));
-    setReady(true);
-  }, [router]);
-
-  /* =======================
-     SIGNATURE HELPERS
-  ======================= */
   const getPoint = (
     e:
       | React.MouseEvent<HTMLCanvasElement>
@@ -97,11 +79,7 @@ export default function EmployeeRegisterPage() {
     };
   };
 
-  const startDraw = (
-    e:
-      | React.MouseEvent<HTMLCanvasElement>
-      | React.TouchEvent<HTMLCanvasElement>
-  ) => {
+  const startDraw = (e: any) => {
     e.preventDefault();
     const { x, y } = getPoint(e);
     const ctx = canvasRef.current!.getContext("2d")!;
@@ -110,17 +88,11 @@ export default function EmployeeRegisterPage() {
     drawing.current = true;
   };
 
-  const drawLine = (
-    e:
-      | React.MouseEvent<HTMLCanvasElement>
-      | React.TouchEvent<HTMLCanvasElement>
-  ) => {
+  const drawLine = (e: any) => {
     if (!drawing.current) return;
     e.preventDefault();
-
     const { x, y } = getPoint(e);
     const ctx = canvasRef.current!.getContext("2d")!;
-
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#000";
@@ -144,7 +116,11 @@ export default function EmployeeRegisterPage() {
   const handleSubmit = async () => {
     setError("");
 
-    if (!form.name || !form.email) {
+    if (
+      pharmacyPin.length !== 4 ||
+      !form.name ||
+      !form.email
+    ) {
       setError("All fields are required");
       return;
     }
@@ -158,14 +134,47 @@ export default function EmployeeRegisterPage() {
     try {
       setLoading(true);
 
+      /* =======================
+         VALIDATE PHARMACY PIN
+      ======================= */
+      const pharmacySnap = await getDocs(
+        query(
+          collection(db, "pharmacies"),
+          where("pin", "==", pharmacyPin)
+        )
+      );
+
+      if (pharmacySnap.empty) {
+        setError("Invalid pharmacy PIN");
+        return;
+      }
+
+      const pharmacyDoc = pharmacySnap.docs[0];
+      const pharmacyData = pharmacyDoc.data();
+
+      if (pharmacyData.suspended) {
+        setError("This pharmacy is suspended");
+        return;
+      }
+
+      /* =======================
+         CREATE EMPLOYEE
+      ======================= */
       await addDoc(collection(db, "pharmacyEmployees"), {
-        pharmacyId: pharmacy.id,
-        ...form,
+        pharmacyId: pharmacyDoc.id, // 🔑 CLAVE
+        name: form.name,
+        email: form.email,
+        pin: form.pin,
+        employeeCode: form.employeeCode,
         signature,
         active: true,
+        createdAtUS: form.createdAtUS,
         createdAt: serverTimestamp(),
       });
 
+      /* =======================
+         EMAIL
+      ======================= */
       await fetch(EMAIL_FUNCTION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -176,15 +185,16 @@ export default function EmployeeRegisterPage() {
             <h2>Employee Registered</h2>
             <p><strong>Name:</strong> ${form.name}</p>
             <p><strong>Employee Code:</strong> ${form.employeeCode}</p>
+            <p><strong>Pharmacy:</strong> ${pharmacyData.name}</p>
             <p><strong>Date:</strong> ${form.createdAtUS}</p>
             <hr/>
-            <p><strong>PIN:</strong></p>
+            <p><strong>Employee PIN:</strong></p>
             <h1>${form.pin}</h1>
           `,
         }),
       });
 
-      router.push("/pharmacy/employee/login");
+      router.push("/pharmacy/login");
     } catch (e) {
       console.error(e);
       setError("Error registering employee");
@@ -194,16 +204,24 @@ export default function EmployeeRegisterPage() {
   };
 
   /* =======================
-     UI (RETURN AL FINAL)
+     UI
   ======================= */
-  if (!ready) return null;
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-xl shadow w-full max-w-lg space-y-4">
         <h1 className="text-2xl font-bold text-center">
           Register Employee
         </h1>
+
+        <input
+          placeholder="Pharmacy PIN"
+          value={pharmacyPin}
+          maxLength={4}
+          onChange={(e) =>
+            setPharmacyPin(e.target.value.replace(/\D/g, ""))
+          }
+          className="w-full border p-2 rounded text-center tracking-widest"
+        />
 
         <input
           placeholder="Full name"

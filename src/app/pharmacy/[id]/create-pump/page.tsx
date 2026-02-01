@@ -9,7 +9,6 @@ import {
   query,
   where,
   serverTimestamp,
-  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -19,6 +18,7 @@ import { db } from "@/lib/firebase";
 type Pump = {
   id: string;
   code: string;
+  status: string;
   createdAtUS: string;
   createdByEmployeeName: string;
   registerCode: string;
@@ -42,7 +42,7 @@ const generateRegisterCode = () =>
   "REG-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
 /* =======================
-   PAGE (ESTO ES LO QUE NEXT ESPERA)
+   PAGE
 ======================= */
 export default function Page() {
   const params = useParams();
@@ -60,7 +60,9 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(formatUSNow());
 
-  /* CLOCK */
+  /* =======================
+     LIVE CLOCK
+  ======================= */
   useEffect(() => {
     const t = setInterval(() => {
       setNow(formatUSNow());
@@ -68,7 +70,9 @@ export default function Page() {
     return () => clearInterval(t);
   }, []);
 
-  /* SESSION */
+  /* =======================
+     SESSION
+  ======================= */
   useEffect(() => {
     const emp = localStorage.getItem("employee");
     if (!emp) {
@@ -79,7 +83,9 @@ export default function Page() {
     setReady(true);
   }, [router]);
 
-  /* REALTIME */
+  /* =======================
+     REALTIME PUMPS
+  ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
 
@@ -100,10 +106,17 @@ export default function Page() {
 
   if (!ready) return null;
 
-  /* CREATE */
+  /* =======================
+     CREATE PUMP
+  ======================= */
   const handleCreate = async () => {
     if (!code.trim()) {
       setError("Pump code required");
+      return;
+    }
+
+    if (pumps.some((p) => p.code === code.trim())) {
+      setError("This pump already exists");
       return;
     }
 
@@ -115,7 +128,11 @@ export default function Page() {
         code: code.trim(),
         pharmacyId,
         status: "available",
+
+        // 🔑 OBLIGATORIO POR RULES
+        createdByEmployeeId: employee.id,
         createdByEmployeeName: employee.name,
+
         registerCode: generateRegisterCode(),
         createdAtUS: formatUSNow(),
         createdAt: serverTimestamp(),
@@ -130,6 +147,9 @@ export default function Page() {
     }
   };
 
+  /* =======================
+     UI
+  ======================= */
   return (
     <div className="max-w-6xl mx-auto p-6">
       <button
@@ -151,6 +171,7 @@ export default function Page() {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* CREATE */}
         <div className="bg-white p-6 rounded-xl shadow space-y-4">
           <input
             placeholder="Pump code"
@@ -174,6 +195,7 @@ export default function Page() {
           </button>
         </div>
 
+        {/* LIST */}
         <div className="bg-white p-6 rounded-xl shadow">
           <h2 className="font-semibold mb-4">
             Pumps created ({pumps.length})
@@ -185,9 +207,18 @@ export default function Page() {
                 key={p.id}
                 className="border rounded p-3"
               >
-                <p><strong>Code:</strong> {p.code}</p>
+                <p>
+                  <strong>Code:</strong> {p.code}
+                </p>
+                <p className="text-sm">
+                  <strong>Status:</strong>{" "}
+                  <span className="capitalize">
+                    {p.status}
+                  </span>
+                </p>
                 <p className="text-xs text-gray-500">
-                  {p.createdByEmployeeName} — {p.createdAtUS}
+                  {p.createdByEmployeeName} —{" "}
+                  {p.createdAtUS}
                 </p>
               </div>
             ))}

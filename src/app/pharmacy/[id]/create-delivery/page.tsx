@@ -3,66 +3,104 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
+  addDoc,
   collection,
+  getDocs,
   query,
   where,
-  getDocs,
-  addDoc,
   serverTimestamp,
-  doc,
-  getDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 /* =======================
-   Types
+   TYPES
 ======================= */
 type Client = {
   id: string;
   name: string;
+  county: string;
+  state: string;
 };
 
-type Driver = {
+type Pump = {
   id: string;
-  email?: string;
+  code: string;
+};
+
+type Employee = {
+  id: string;
+  name: string;
+};
+
+/* =======================
+   HELPERS
+======================= */
+const formatUS = (d: Date) =>
+  d.toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+const generateOrderCode = () => {
+  const d = new Date();
+  return `DEL-${d
+    .toISOString()
+    .slice(0, 10)
+    .replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
 };
 
 const EMAIL_FUNCTION_URL =
   "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
-export default function CreateDeliveryPage() {
+/* =======================
+   PAGE
+======================= */
+export default function Page() {
   const router = useRouter();
   const params = useParams();
+  const pharmacyId = params.id as string;
 
-  const pharmacyId =
-    (params.pharmacyId as string) ||
-    (params.id as string);
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [now, setNow] = useState<Date | null>(null);
 
-  const [pharmacyName, setPharmacyName] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
-  const [clientId, setClientId] = useState("");
-  const [address, setAddress] = useState("");
-  const [pumpCodes, setPumpCodes] = useState("");
+  const [pumps, setPumps] = useState<Pump[]>([]);
+
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedPumps, setSelectedPumps] = useState<string[]>([]);
+
+  const [searchPump, setSearchPump] = useState("");
+  const [orderCode] = useState(generateOrderCode());
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successOrder, setSuccessOrder] =
-    useState<string | null>(null);
+  const [success, setSuccess] = useState("");
 
   /* =======================
-     LOAD PHARMACY
+     CLOCK (CLIENT ONLY)
   ======================= */
   useEffect(() => {
-    if (!pharmacyId) return;
+    setNow(new Date());
+    const i = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(i);
+  }, []);
 
-    getDoc(doc(db, "pharmacies", pharmacyId)).then(
-      (snap) => {
-        if (snap.exists()) {
-          setPharmacyName(snap.data().name);
-        }
-      }
-    );
-  }, [pharmacyId]);
+  /* =======================
+     SESSION
+  ======================= */
+  useEffect(() => {
+    const emp = localStorage.getItem("employee");
+    if (!emp) {
+      router.push("/pharmacy/login");
+      return;
+    }
+    setEmployee(JSON.parse(emp));
+  }, [router]);
 
   /* =======================
      LOAD CLIENTS
@@ -70,117 +108,132 @@ export default function CreateDeliveryPage() {
   useEffect(() => {
     if (!pharmacyId) return;
 
-    const q = query(
-      collection(db, "clients"),
-      where("pharmacyId", "==", pharmacyId)
-    );
-
-    getDocs(q).then((snap) =>
+    getDocs(
+      query(
+        collection(db, "clients"),
+        where("pharmacyId", "==", pharmacyId)
+      )
+    ).then((snap) =>
       setClients(
         snap.docs.map((d) => ({
           id: d.id,
-          name: d.data().name || "Unnamed client",
+          ...(d.data() as Omit<Client, "id">),
         }))
       )
     );
   }, [pharmacyId]);
 
   /* =======================
-     ORDER NUMBER
+     LOAD PUMPS
   ======================= */
-  const generateOrderNumber = () => {
-    const date = new Date()
-      .toISOString()
-      .slice(0, 10)
-      .replace(/-/g, "");
-    const random = Math.floor(1000 + Math.random() * 9000);
-    return `ORD-${date}-${random}`;
+  useEffect(() => {
+    if (!pharmacyId) return;
+
+    getDocs(
+      query(
+        collection(db, "pumps"),
+        where("pharmacyId", "==", pharmacyId),
+        where("status", "==", "available")
+      )
+    ).then((snap) =>
+      setPumps(
+        snap.docs.map((d) => ({
+          id: d.id,
+          code: d.data().code,
+        }))
+      )
+    );
+  }, [pharmacyId]);
+
+  /* =======================
+     ADD PUMP (SEARCH / SCAN)
+  ======================= */
+  const addPump = (code: string) => {
+    if (!code) return;
+    if (!selectedPumps.includes(code)) {
+      setSelectedPumps([...selectedPumps, code]);
+    }
+    setSearchPump("");
   };
+
+  const filteredPumps = pumps.filter((p) =>
+    p.code.toLowerCase().includes(searchPump.toLowerCase())
+  );
 
   /* =======================
      CREATE DELIVERY
   ======================= */
-  const handleSubmit = async () => {
-    setError("");
-    setSuccessOrder(null);
-
-    if (!clientId || !address || !pumpCodes) {
-      setError("All fields are required.");
+  const handleCreate = async () => {
+    if (!selectedClient || selectedPumps.length === 0) {
+      setError("Client and pumps are required");
       return;
     }
 
-    setLoading(true);
-    const orderNumber = generateOrderNumber();
-
     try {
+      setLoading(true);
+      setError("");
+
       const deliveryRef = await addDoc(
         collection(db, "deliveries"),
         {
-          orderNumber,
+          orderCode,
           pharmacyId,
-          clientId,              // SOLO ID
-          driverId: null,
-          deliveryAddress: address,
-          pumpCodes: pumpCodes
-            .split(",")
-            .map((p) => p.trim())
-            .filter(Boolean),
-          status: "created",     // INTERNO (NO CLIENTE)
+          clientId: selectedClient.id,
+          clientName: selectedClient.name,
+          county: selectedClient.county,
+          state: selectedClient.state,
+          pumps: selectedPumps,
+          createdBy: {
+            employeeId: employee?.id,
+            employeeName: employee?.name,
+          },
+          status: "created",
           createdAt: serverTimestamp(),
         }
       );
 
-      setSuccessOrder(orderNumber);
-
-      /* =======================
-         NOTIFY DRIVERS ONLY
-      ======================= */
+      /* NOTIFY DRIVERS (SAME COUNTY + STATE) */
       const driversSnap = await getDocs(
-        collection(db, "deliveryDrivers")
+        query(
+          collection(db, "deliveryDrivers"),
+          where("active", "==", true),
+          where("county", "==", selectedClient.county),
+          where("state", "==", selectedClient.state)
+        )
       );
 
       for (const d of driversSnap.docs) {
-        const driver: Driver = {
-          id: d.id,
-          email: d.data().email,
-        };
+        const driver = d.data();
 
-        // In-app notification
         await addDoc(collection(db, "notifications"), {
-          userId: driver.id,
+          userId: d.id,
           role: "driver",
           title: "New delivery available",
-          message: `Order ${orderNumber} is ready for pickup.`,
+          message: `Order ${orderCode} available in your area`,
           deliveryId: deliveryRef.id,
           read: false,
           createdAt: serverTimestamp(),
         });
 
-        // Email to driver ONLY
         if (driver.email) {
           fetch(EMAIL_FUNCTION_URL, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: driver.email,
               subject: "New delivery available",
-              text: `Order: ${orderNumber}
-Address: ${address}
-Pumps: ${pumpCodes}`,
+              text: `Order: ${orderCode}\nCounty: ${selectedClient.county}`,
             }),
           }).catch(() => {});
         }
       }
 
-      // RESET
-      setClientId("");
-      setAddress("");
-      setPumpCodes("");
-    } catch (err) {
-      console.error(err);
-      setError("Delivery could not be created.");
+      setSuccess(`Delivery ${orderCode} created`);
+      setSelectedClient(null);
+      setSelectedPumps([]);
+    } catch (e) {
+      console.error(e);
+      setError("Error creating delivery");
     } finally {
       setLoading(false);
     }
@@ -190,76 +243,94 @@ Pumps: ${pumpCodes}`,
      UI
   ======================= */
   return (
-    <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
-      <div className="md:col-span-2">
-        {/* HEADER */}
-        <div className="flex justify-between text-sm mb-6">
-          <button
-            onClick={() =>
-              router.push(`/pharmacy/${pharmacyId}`)
-            }
-            className="text-blue-600 hover:underline"
-          >
-            ← Back to menu
-          </button>
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <button
+        onClick={() => router.push(`/pharmacy/${pharmacyId}`)}
+        className="text-blue-600 hover:underline"
+      >
+        ← Back to menu
+      </button>
 
-          <span className="text-gray-600 font-medium">
-            {pharmacyName}
-          </span>
-        </div>
+      <h1 className="text-2xl font-bold">Create Delivery</h1>
 
-        <h1 className="text-2xl font-bold mb-6">
-          Create Delivery
-        </h1>
+      <p className="text-sm text-gray-600">
+        Employee: <strong>{employee?.name}</strong>
+        <br />
+        Date & Time: {now ? formatUS(now) : "—"}
+      </p>
 
-        <select
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-          className="w-full border p-2 mb-4"
-        >
-          <option value="">Select client</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
+      <p className="font-semibold">Order Code: {orderCode}</p>
+
+      {/* CLIENT */}
+      <select
+        className="w-full border p-2"
+        value={selectedClient?.id || ""}
+        onChange={(e) =>
+          setSelectedClient(
+            clients.find((c) => c.id === e.target.value) || null
+          )
+        }
+      >
+        <option value="">Select client</option>
+        {clients.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+
+      {/* SEARCH / SCAN */}
+      <input
+        value={searchPump}
+        onChange={(e) => setSearchPump(e.target.value)}
+        placeholder="Scan or type pump code"
+        className="w-full border p-2"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") addPump(searchPump.trim());
+        }}
+      />
+
+      {/* SEARCH RESULTS */}
+      {searchPump && (
+        <div className="border rounded max-h-40 overflow-y-auto">
+          {filteredPumps.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => addPump(p.code)}
+              className="px-3 py-2 cursor-pointer hover:bg-gray-100"
+            >
+              {p.code}
+            </div>
           ))}
-        </select>
+        </div>
+      )}
 
-        <input
-          placeholder="Delivery address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          className="w-full border p-2 mb-4"
-        />
-
-        <input
-          placeholder="Pump bar codes"
-          value={pumpCodes}
-          onChange={(e) => setPumpCodes(e.target.value)}
-          className="w-full border p-2 mb-4"
-        />
-
-        {error && (
-          <p className="text-red-600 mb-3">
-            {error}
+      {/* SELECTED */}
+      <div className="border rounded p-3">
+        <strong>Selected Pumps</strong>
+        {selectedPumps.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No pumps added
           </p>
+        ) : (
+          <ul className="list-disc pl-5">
+            {selectedPumps.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
         )}
-
-        {successOrder && (
-          <p className="text-green-600 mb-3">
-            Order created:{" "}
-            <strong>{successOrder}</strong>
-          </p>
-        )}
-
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="w-full bg-purple-600 text-white py-3 rounded"
-        >
-          {loading ? "Saving..." : "Create Delivery"}
-        </button>
       </div>
+
+      {error && <p className="text-red-600">{error}</p>}
+      {success && <p className="text-green-600">{success}</p>}
+
+      <button
+        onClick={handleCreate}
+        disabled={loading}
+        className="w-full bg-purple-600 text-white py-3 rounded"
+      >
+        {loading ? "Saving..." : "Create Delivery"}
+      </button>
     </div>
   );
 }

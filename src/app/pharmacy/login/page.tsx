@@ -24,13 +24,15 @@ export default function PharmacyLoginPage() {
     try {
       setLoading(true);
 
-      // 🏥 VALIDAR FARMACIA
-      const pharmacyQuery = query(
-        collection(db, "pharmacies"),
-        where("pin", "==", pharmacyPin)
+      /* =======================
+         PHARMACY
+      ======================= */
+      const pharmacySnap = await getDocs(
+        query(
+          collection(db, "pharmacies"),
+          where("pin", "==", pharmacyPin)
+        )
       );
-
-      const pharmacySnap = await getDocs(pharmacyQuery);
 
       if (pharmacySnap.empty) {
         setError("Invalid pharmacy PIN");
@@ -45,31 +47,45 @@ export default function PharmacyLoginPage() {
         return;
       }
 
-      // 👤 VALIDAR EMPLEADO
-      const employeeQuery = query(
-        collection(db, "pharmacyEmployees"),
-        where("pharmacyId", "==", pharmacyDoc.id),
-        where("pin", "==", employeePin),
-        where("active", "==", true)
+      /* =======================
+         EMPLOYEE (CLAVE)
+      ======================= */
+      const employeeSnap = await getDocs(
+        query(
+          collection(db, "pharmacyEmployees"),
+          where("pin", "==", employeePin),
+          where("active", "==", true)
+        )
       );
-
-      const employeeSnap = await getDocs(employeeQuery);
 
       if (employeeSnap.empty) {
         setError("Invalid employee PIN");
         return;
       }
 
-      const employeeDoc = employeeSnap.docs[0];
+      // Buscar empleado que pertenezca a ESTA farmacia
+      const employeeDoc = employeeSnap.docs.find(
+        (doc) => doc.data().pharmacyId === pharmacyDoc.id
+      );
+
+      if (!employeeDoc) {
+        setError("Employee does not belong to this pharmacy");
+        return;
+      }
+
       const employeeData = employeeDoc.data();
 
-      // 💾 SESIÓN
+      /* =======================
+         SESSION
+      ======================= */
       localStorage.setItem(
         "pharmacy",
         JSON.stringify({
           id: pharmacyDoc.id,
           name: pharmacyData.name,
           email: pharmacyData.email,
+          state: pharmacyData.state,
+          county: pharmacyData.county,
         })
       );
 
@@ -84,8 +100,8 @@ export default function PharmacyLoginPage() {
       );
 
       router.push(`/pharmacy/${pharmacyDoc.id}`);
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       setError("Login error");
     } finally {
       setLoading(false);
@@ -99,7 +115,6 @@ export default function PharmacyLoginPage() {
           Pharmacy & Employee Access
         </h1>
 
-        {/* 🏥 PIN FARMACIA */}
         <input
           value={pharmacyPin}
           onChange={(e) =>
@@ -110,7 +125,6 @@ export default function PharmacyLoginPage() {
           placeholder="Pharmacy PIN"
         />
 
-        {/* 👤 PIN EMPLEADO */}
         <input
           value={employeePin}
           onChange={(e) =>
@@ -130,13 +144,12 @@ export default function PharmacyLoginPage() {
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full bg-green-600 text-white py-3 rounded hover:bg-green-700 disabled:opacity-60"
+          className="w-full bg-green-600 text-white py-3 rounded"
         >
           {loading ? "Checking..." : "Enter"}
         </button>
 
-        {/* ➕ REGISTRAR EMPLEADO */}
-        <p className="text-center text-sm text-gray-500 pt-2">
+        <p className="text-center text-sm text-gray-500">
           New employee?{" "}
           <button
             onClick={() =>
@@ -148,7 +161,6 @@ export default function PharmacyLoginPage() {
           </button>
         </p>
 
-        {/* 🏥 REGISTRAR FARMACIA */}
         <p className="text-center text-sm text-gray-500">
           New pharmacy?{" "}
           <button
