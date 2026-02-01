@@ -24,11 +24,30 @@ const EMAIL_FUNCTION_URL =
 type Client = {
   id: string;
   name: string;
-  phone: string;
   email: string;
   address: string;
   pin: string;
 };
+
+/* =======================
+   HELPERS
+======================= */
+const generatePin = () =>
+  Math.floor(1000 + Math.random() * 9000).toString();
+
+/**
+ * 🇺🇸 MM/DD/YYYY hh:mm:ss AM/PM
+ */
+const formatUSDateTime = (date: Date) =>
+  date.toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
 
 /* =======================
    PAGE
@@ -41,13 +60,39 @@ export default function CreateClientPage() {
     (params.pharmacyId as string) ||
     (params.id as string);
 
-  const generatePin = () =>
-    Math.floor(1000 + Math.random() * 9000).toString();
+  /* =======================
+     SESSION
+  ======================= */
+  const [employee, setEmployee] = useState<any>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const emp = localStorage.getItem("employee");
+    if (emp) {
+      setEmployee(JSON.parse(emp));
+    }
+  }, []);
+
+  /* =======================
+     LIVE CLOCK ⏱
+  ======================= */
+  const [now, setNow] = useState<Date>(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  /* =======================
+     FORM
+  ======================= */
   const [form, setForm] = useState({
     name: "",
     address: "",
-    phone: "",
     email: "",
     pin: generatePin(),
   });
@@ -57,7 +102,7 @@ export default function CreateClientPage() {
   const [error, setError] = useState("");
 
   /* =======================
-     LOAD CLIENTS (FIXED)
+     LOAD CLIENTS
   ======================= */
   useEffect(() => {
     if (!pharmacyId) return;
@@ -82,7 +127,9 @@ export default function CreateClientPage() {
   /* =======================
      HANDLERS
   ======================= */
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setForm({
       ...form,
       [e.target.name]: e.target.value,
@@ -97,8 +144,8 @@ export default function CreateClientPage() {
     if (!client.email) return;
 
     const html = `
-      <div style="font-family: Arial, sans-serif; line-height:1.6">
-        <h2>Welcome to Delivery Dispatcher</h2>
+      <div style="font-family:Arial;line-height:1.6">
+        <h2>Client Account Created</h2>
         <p>Hello <strong>${client.name}</strong>,</p>
         <p>Your client account has been created.</p>
         <p><strong>Access PIN:</strong></p>
@@ -120,22 +167,31 @@ export default function CreateClientPage() {
   const handleSubmit = async () => {
     setError("");
 
-    if (!pharmacyId) {
-      setError("Pharmacy not detected.");
+    if (!pharmacyId || !employee) {
+      setError("Session not detected.");
       return;
     }
 
     try {
       setLoading(true);
 
+      // ⏱ EXACT TIMESTAMP (VISIBLE = SAVED)
+      const createdAtUS = formatUSDateTime(now);
+
       const clientData = {
         name: form.name,
         address: form.address,
-        phone: form.phone,
         email: form.email,
         pin: form.pin,
+
         pharmacyId,
-        createdAt: serverTimestamp(),
+
+        // 🧾 AUDIT
+        createdByEmployeeId: employee.id,
+        createdByEmployeeName: employee.name,
+        createdAtUS, // ← exact MM/DD/YYYY hh:mm:ss AM/PM
+
+        createdAt: serverTimestamp(), // technical
       };
 
       await addDoc(collection(db, "clients"), clientData);
@@ -149,7 +205,6 @@ export default function CreateClientPage() {
       setForm({
         name: "",
         address: "",
-        phone: "",
         email: "",
         pin: generatePin(),
       });
@@ -172,17 +227,32 @@ export default function CreateClientPage() {
         <div className="bg-white p-8 rounded-xl shadow">
           <button
             onClick={() => router.back()}
-            className="text-sm text-blue-600 hover:underline mb-6"
+            className="text-sm text-blue-600 hover:underline mb-4"
           >
             ← Back
           </button>
 
-          <h1 className="text-2xl font-bold mb-6">
+          <h1 className="text-2xl font-bold mb-2">
             Create Client
           </h1>
 
+          {/* 👤 EMPLOYEE + ⏱ CLOCK */}
+          {employee && (
+            <div className="text-sm text-gray-600 mb-6 space-y-1">
+              <p>
+                <strong>Employee:</strong> {employee.name}
+              </p>
+              <p>
+                <strong>Date & Time:</strong>{" "}
+                <span className="font-mono">
+                  {formatUSDateTime(now)}
+                </span>
+              </p>
+            </div>
+          )}
+
           <div className="space-y-4">
-            {["name", "address", "phone", "email"].map((field) => (
+            {["name", "address", "email"].map((field) => (
               <input
                 key={field}
                 name={field}
@@ -240,7 +310,7 @@ export default function CreateClientPage() {
                   <div>
                     <p className="font-medium">{c.name}</p>
                     <p className="text-xs text-gray-500">
-                      {c.email || c.phone}
+                      {c.email}
                     </p>
                   </div>
 
