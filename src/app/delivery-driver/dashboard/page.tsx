@@ -23,6 +23,7 @@ type Delivery = {
   city: string;
   pharmacyId: string;
   createdByName: string;
+  pumps: string[];
 };
 
 type PharmacyEmployee = {
@@ -31,17 +32,14 @@ type PharmacyEmployee = {
 };
 
 /* =======================
-   CONFIG (temporal)
+   CONFIG
 ======================= */
 const DRIVER_ID = "driver_demo_001";
-const EMAIL_FUNCTION_URL =
-  "https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail";
 
 /* =======================
    HELPERS
 ======================= */
-const safe = (v?: string) =>
-  v && v.trim() !== "" ? v : "—";
+const safe = (v?: string) => (v && v.trim() !== "" ? v : "—");
 
 const formatUSDate = (d: Date) =>
   d.toLocaleString("en-US", {
@@ -58,19 +56,39 @@ const formatUSDate = (d: Date) =>
 ======================= */
 export default function DriverDashboard() {
   const [available, setAvailable] = useState<Delivery[]>([]);
-  const [active, setActive] = useState<Delivery | null>(null);
+  const [pickup, setPickup] = useState<Delivery | null>(null);
+  const [delivering, setDelivering] = useState<Delivery | null>(null);
+
   const [employees, setEmployees] = useState<PharmacyEmployee[]>([]);
   const [employeeId, setEmployeeId] = useState("");
-  const [signedAtUS, setSignedAtUS] = useState("");
+
+  const [receiverName, setReceiverName] = useState("");
+  const [receiverRole, setReceiverRole] = useState("");
+
+  const [nowUS, setNowUS] = useState(formatUSDate(new Date()));
 
   /* =======================
-     SIGNATURE STATE
+     SIGNATURE CANVAS
   ======================= */
   const empCanvasRef = useRef<HTMLCanvasElement>(null);
   const drvCanvasRef = useRef<HTMLCanvasElement>(null);
+  const recvCanvasRef = useRef<HTMLCanvasElement>(null);
+
   const drawing = useRef(false);
   const empSigned = useRef(false);
   const drvSigned = useRef(false);
+  const recvSigned = useRef(false);
+
+  /* =======================
+     CLOCK
+  ======================= */
+  useEffect(() => {
+    const t = setInterval(
+      () => setNowUS(formatUSDate(new Date())),
+      60000
+    );
+    return () => clearInterval(t);
+  }, []);
 
   /* =======================
      AVAILABLE DELIVERIES
@@ -91,9 +109,8 @@ export default function DriverDashboard() {
             clientName: safe(data.clientName),
             city: safe(data.city),
             pharmacyId: data.pharmacyId,
-            createdByName: safe(
-              data.createdBy?.employeeName
-            ),
+            createdByName: safe(data.createdBy?.employeeName),
+            pumps: data.pumps || [],
           };
         })
       );
@@ -101,7 +118,7 @@ export default function DriverDashboard() {
   }, []);
 
   /* =======================
-     ACTIVE DELIVERY
+     PICKUP (accepted)
   ======================= */
   useEffect(() => {
     const q = query(
@@ -112,24 +129,52 @@ export default function DriverDashboard() {
 
     return onSnapshot(q, (snap) => {
       if (snap.empty) {
-        setActive(null);
+        setPickup(null);
         return;
       }
 
       const d = snap.docs[0];
       const data = d.data();
 
-      setSignedAtUS(formatUSDate(new Date()));
-
-      setActive({
+      setPickup({
         id: d.id,
         orderCode: safe(data.orderCode),
         clientName: safe(data.clientName),
         city: safe(data.city),
         pharmacyId: data.pharmacyId,
-        createdByName: safe(
-          data.createdBy?.employeeName
-        ),
+        createdByName: safe(data.createdBy?.employeeName),
+        pumps: data.pumps || [],
+      });
+    });
+  }, []);
+
+  /* =======================
+     DELIVERING (picked_up)
+  ======================= */
+  useEffect(() => {
+    const q = query(
+      collection(db, "deliveries"),
+      where("driverId", "==", DRIVER_ID),
+      where("status", "==", "picked_up")
+    );
+
+    return onSnapshot(q, (snap) => {
+      if (snap.empty) {
+        setDelivering(null);
+        return;
+      }
+
+      const d = snap.docs[0];
+      const data = d.data();
+
+      setDelivering({
+        id: d.id,
+        orderCode: safe(data.orderCode),
+        clientName: safe(data.clientName),
+        city: safe(data.city),
+        pharmacyId: data.pharmacyId,
+        createdByName: safe(data.createdBy?.employeeName),
+        pumps: data.pumps || [],
       });
     });
   }, []);
@@ -138,41 +183,26 @@ export default function DriverDashboard() {
      LOAD EMPLOYEES
   ======================= */
   useEffect(() => {
-    if (!active?.pharmacyId) return;
+    if (!pickup?.pharmacyId) return;
 
-    const loadEmployees = async () => {
-      const snap = await getDocs(
-        query(
-          collection(db, "pharmacyEmployees"),
-          where("pharmacyId", "==", active.pharmacyId),
-          where("active", "==", true)
-        )
-      );
-
+    getDocs(
+      query(
+        collection(db, "pharmacyEmployees"),
+        where("pharmacyId", "==", pickup.pharmacyId),
+        where("active", "==", true)
+      )
+    ).then((snap) =>
       setEmployees(
         snap.docs.map((d) => ({
           id: d.id,
           name: d.data().name,
         }))
-      );
-    };
-
-    loadEmployees();
-  }, [active?.pharmacyId]);
+      )
+    );
+  }, [pickup?.pharmacyId]);
 
   /* =======================
-     ACCEPT DELIVERY
-  ======================= */
-  const acceptDelivery = async (d: Delivery) => {
-    await updateDoc(doc(db, "deliveries", d.id), {
-      status: "accepted",
-      driverId: DRIVER_ID,
-      acceptedAt: serverTimestamp(),
-    });
-  };
-
-  /* =======================
-     SIGNATURE LOGIC
+     DRAW HELPERS
   ======================= */
   const getPoint = (e: any, c: HTMLCanvasElement) => {
     const r = c.getBoundingClientRect();
@@ -181,10 +211,7 @@ export default function DriverDashboard() {
   };
 
   const startDraw =
-    (
-      ref: React.RefObject<HTMLCanvasElement>,
-      signed: React.MutableRefObject<boolean>
-    ) =>
+    (ref: React.RefObject<HTMLCanvasElement>, signed: any) =>
     (e: any) => {
       e.preventDefault();
       const canvas = ref.current!;
@@ -210,106 +237,140 @@ export default function DriverDashboard() {
       ctx.stroke();
     };
 
-  const endDraw = () => {
-    drawing.current = false;
-  };
+  const endDraw = () => (drawing.current = false);
 
   /* =======================
-     CONFIRM PICKUP + EMAIL
+     ACTIONS
   ======================= */
+  const acceptDelivery = async (d: Delivery) => {
+    await updateDoc(doc(db, "deliveries", d.id), {
+      status: "accepted",
+      driverId: DRIVER_ID,
+      acceptedAt: serverTimestamp(),
+    });
+  };
+
   const confirmPickup = async () => {
-    if (!active) return;
-
-    if (!employeeId) {
-      alert("Seleccione la empleada");
+    if (!pickup || !employeeId || !empSigned.current || !drvSigned.current) {
+      alert("Faltan datos o firmas");
       return;
     }
 
-    if (!empSigned.current || !drvSigned.current) {
-      alert("Faltan firmas");
-      return;
-    }
-
-    const empSignature =
-      empCanvasRef.current!.toDataURL("image/png");
-    const drvSignature =
-      drvCanvasRef.current!.toDataURL("image/png");
-
-    await updateDoc(doc(db, "deliveries", active.id), {
+    await updateDoc(doc(db, "deliveries", pickup.id), {
       status: "picked_up",
       pickedUpAt: serverTimestamp(),
       pharmacyHandoff: {
         employeeId,
-        employeeSignature: empSignature,
-        driverSignature: drvSignature,
-        signedAtUS,
+        employeeSignature:
+          empCanvasRef.current!.toDataURL("image/png"),
+        driverSignature:
+          drvCanvasRef.current!.toDataURL("image/png"),
+        signedAtUS: nowUS,
+        signedAt: serverTimestamp(),
+      },
+    });
+  };
+
+  const confirmDelivery = async () => {
+    if (
+      !delivering ||
+      !receiverName ||
+      !receiverRole ||
+      !recvSigned.current
+    ) {
+      alert("Faltan datos o firma del receptor");
+      return;
+    }
+
+    await updateDoc(doc(db, "deliveries", delivering.id), {
+      status: "delivered",
+      deliveredAt: serverTimestamp(),
+      clientHandoff: {
+        receiverName,
+        receiverRole,
+        receiverSignature:
+          recvCanvasRef.current!.toDataURL("image/png"),
+        signedAtUS: nowUS,
         signedAt: serverTimestamp(),
       },
     });
 
-    /* 📧 SEND RECEIPT EMAIL (PRUEBA) */
-    const pharmacyEmail = "tuemail@gmail.com";
-    const driverEmail = "tuemail@gmail.com";
-
-    const receiptHtml = `
-      <div style="font-family: Arial, sans-serif">
-        <h2>📦 Pickup Receipt</h2>
-        <p><b>Order:</b> ${active.orderCode}</p>
-        <p><b>Client:</b> ${active.clientName}</p>
-        <p><b>City:</b> ${active.city}</p>
-        <p><b>Date & Time:</b> ${signedAtUS}</p>
-
-        <h3>Signatures</h3>
-        <p><b>Pharmacy</b></p>
-        <img src="${empSignature}" width="250"/>
-        <p><b>Driver</b></p>
-        <img src="${drvSignature}" width="250"/>
-      </div>
-    `;
-
-    await fetch(EMAIL_FUNCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: [pharmacyEmail, driverEmail],
-        subject: `Pickup Receipt - ${active.orderCode}`,
-        html: receiptHtml,
-      }),
-    });
-
-    alert("Entrega confirmada y recibo enviado");
+    alert("Entrega finalizada correctamente");
   };
 
   /* =======================
-     UI
+     UI STATES
   ======================= */
-  if (active) {
-    return (
-      <div className="p-6 max-w-xl mx-auto space-y-4">
-        <h1 className="text-xl font-bold">
-          Entrega en farmacia
-        </h1>
 
-        <p><b>Order:</b> {active.orderCode}</p>
-        <p><b>Client:</b> {active.clientName}</p>
-        <p><b>City:</b> {active.city}</p>
-        <p><b>Created by:</b> {active.createdByName}</p>
-        <p><b>Date & Time:</b> {signedAtUS}</p>
+  /* ---------- DELIVERY TO CLIENT ---------- */
+  if (delivering) {
+    return (
+      <div className="p-6 max-w-xl mx-auto space-y-3">
+        <h1 className="text-xl font-bold">Entrega al cliente</h1>
+
+        <p><b>Order:</b> {delivering.orderCode}</p>
+        <p><b>Client:</b> {delivering.clientName}</p>
+        <p><b>City:</b> {delivering.city}</p>
+        <p><b>Pumps:</b> {delivering.pumps.join(", ")}</p>
+        <p><b>Date & Time:</b> {nowUS}</p>
+
+        <input
+          placeholder="Nombre receptor"
+          className="w-full border p-2"
+          value={receiverName}
+          onChange={(e) => setReceiverName(e.target.value)}
+        />
+
+        <input
+          placeholder="Cargo"
+          className="w-full border p-2"
+          value={receiverRole}
+          onChange={(e) => setReceiverRole(e.target.value)}
+        />
+
+        <p className="font-medium">Firma receptor</p>
+        <canvas
+          ref={recvCanvasRef}
+          width={400}
+          height={120}
+          className="border w-full"
+          onMouseDown={startDraw(recvCanvasRef, recvSigned)}
+          onMouseMove={drawLine(recvCanvasRef)}
+          onMouseUp={endDraw}
+        />
+
+        <button
+          onClick={confirmDelivery}
+          className="bg-green-600 text-white px-6 py-2 rounded"
+        >
+          Confirmar entrega
+        </button>
+      </div>
+    );
+  }
+
+  /* ---------- PICKUP ---------- */
+  if (pickup) {
+    return (
+      <div className="p-6 max-w-xl mx-auto space-y-3">
+        <h1 className="text-xl font-bold">Retiro en farmacia</h1>
+
+        <p><b>Order:</b> {pickup.orderCode}</p>
+        <p><b>Pumps:</b> {pickup.pumps.join(", ")}</p>
+        <p><b>Date & Time:</b> {nowUS}</p>
 
         <select
           value={employeeId}
           onChange={(e) => setEmployeeId(e.target.value)}
-          className="w-full border p-2 rounded"
+          className="w-full border p-2"
         >
-          <option value="">Select employee</option>
+          <option value="">Seleccione empleada</option>
           {employees.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}
-            </option>
+            <option key={e.id} value={e.id}>{e.name}</option>
           ))}
         </select>
 
-        <p className="font-medium">Firma empleada</p>
+        <p>Firma empleada</p>
         <canvas
           ref={empCanvasRef}
           width={400}
@@ -320,7 +381,7 @@ export default function DriverDashboard() {
           onMouseUp={endDraw}
         />
 
-        <p className="font-medium">Firma conductor</p>
+        <p>Firma conductor</p>
         <canvas
           ref={drvCanvasRef}
           width={400}
@@ -341,27 +402,22 @@ export default function DriverDashboard() {
     );
   }
 
+  /* ---------- AVAILABLE ---------- */
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">
-        Available Deliveries
-      </h1>
+      <h1 className="text-2xl font-bold mb-4">Available Deliveries</h1>
+
+      {available.length === 0 && <p>No hay deliveries</p>}
 
       {available.map((d) => (
-        <div
-          key={d.id}
-          className="border p-4 rounded mb-3 flex justify-between"
-        >
-          <div>
-            <p><b>Order:</b> {d.orderCode}</p>
-            <p><b>Client:</b> {d.clientName}</p>
-            <p><b>City:</b> {d.city}</p>
-            <p><b>Created by:</b> {d.createdByName}</p>
-          </div>
+        <div key={d.id} className="border p-4 rounded mb-3">
+          <p><b>Order:</b> {d.orderCode}</p>
+          <p><b>Client:</b> {d.clientName}</p>
+          <p><b>Pumps:</b> {d.pumps.join(", ")}</p>
 
           <button
             onClick={() => acceptDelivery(d)}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
+            className="mt-2 bg-blue-600 text-white px-4 py-2 rounded"
           >
             Accept
           </button>
