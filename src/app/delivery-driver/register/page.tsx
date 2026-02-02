@@ -66,27 +66,16 @@ const generatePin = () =>
 
 export default function DriverRegisterPage() {
   const router = useRouter();
-
-  // 🔐 PIN fijo por render
   const pinRef = useRef(generatePin());
 
   /* =======================
      FORM
   ======================= */
-  const [form, setForm] = useState<{
-    name: string;
-    email: string;
-    country: CountryCode;
-    state: string;
-    county: string;
-    city: string;
-    pin: string;
-  }>({
+  const [form, setForm] = useState({
     name: "",
     email: "",
-    country: "US",
+    country: "US" as CountryCode,
     state: "",
-    county: "",
     city: "",
     pin: pinRef.current,
   });
@@ -94,45 +83,37 @@ export default function DriverRegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const regions = COUNTRIES[form.country].regions;
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const regions = COUNTRIES[form.country].regions;
-
   /* =======================
-     SIGNATURE (MOUSE + TOUCH)
+     SIGNATURE
   ======================= */
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
 
   const getPoint = (
-    e:
-      | React.MouseEvent<HTMLCanvasElement>
-      | React.TouchEvent<HTMLCanvasElement>
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
   ) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-
     if ("touches" in e) {
       return {
         x: e.touches[0].clientX - rect.left,
         y: e.touches[0].clientY - rect.top,
       };
     }
-
     return {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
   };
 
-  const startDraw = (
-    e:
-      | React.MouseEvent<HTMLCanvasElement>
-      | React.TouchEvent<HTMLCanvasElement>
-  ) => {
+  const startDraw = (e: any) => {
     e.preventDefault();
     const { x, y } = getPoint(e);
     const ctx = canvasRef.current!.getContext("2d")!;
@@ -141,14 +122,9 @@ export default function DriverRegisterPage() {
     drawing.current = true;
   };
 
-  const drawLine = (
-    e:
-      | React.MouseEvent<HTMLCanvasElement>
-      | React.TouchEvent<HTMLCanvasElement>
-  ) => {
+  const drawLine = (e: any) => {
     if (!drawing.current) return;
     e.preventDefault();
-
     const { x, y } = getPoint(e);
     const ctx = canvasRef.current!.getContext("2d")!;
     ctx.lineWidth = 2;
@@ -168,7 +144,7 @@ export default function DriverRegisterPage() {
   };
 
   /* =======================
-     SEND EMAIL
+     EMAIL
   ======================= */
   const sendEmail = async () => {
     const html = `
@@ -180,7 +156,7 @@ export default function DriverRegisterPage() {
       <h1>${form.pin}</h1>
     `;
 
-    const res = await fetch(EMAIL_FUNCTION_URL, {
+    await fetch(EMAIL_FUNCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -189,8 +165,6 @@ export default function DriverRegisterPage() {
         html,
       }),
     });
-
-    if (!res.ok) throw new Error("Email failed");
   };
 
   /* =======================
@@ -200,14 +174,7 @@ export default function DriverRegisterPage() {
     e.preventDefault();
     setError("");
 
-    if (
-      !form.name ||
-      !form.email ||
-      !form.country ||
-      !form.state ||
-      !form.county ||
-      !form.city
-    ) {
+    if (!form.name || !form.email || !form.state || !form.city) {
       setError("All fields are required");
       return;
     }
@@ -221,20 +188,23 @@ export default function DriverRegisterPage() {
     try {
       setLoading(true);
 
-      // 🔒 PIN único
       const q = query(
         collection(db, "deliveryDrivers"),
         where("pin", "==", form.pin)
       );
       const snap = await getDocs(q);
-
       if (!snap.empty) {
         setError("PIN collision, refresh and try again");
         return;
       }
 
       await addDoc(collection(db, "deliveryDrivers"), {
-        ...form,
+        name: form.name,
+        email: form.email,
+        country: form.country,
+        state: form.state,
+        city: form.city,
+        pin: form.pin,
         signature,
         active: true,
         createdAt: serverTimestamp(),
@@ -259,118 +229,38 @@ export default function DriverRegisterPage() {
         onSubmit={handleSubmit}
         className="bg-white p-8 rounded-xl shadow-md w-full max-w-lg space-y-4"
       >
-        <h1 className="text-2xl font-bold text-center">
-          Register Driver
-        </h1>
+        <h1 className="text-2xl font-bold text-center">Register Driver</h1>
 
-        <input
-          name="name"
-          placeholder="Full name"
-          value={form.name}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
+        <input name="name" placeholder="Full name" value={form.name} onChange={handleChange} className="w-full border p-2 rounded" />
+        <input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} className="w-full border p-2 rounded" />
 
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          value={form.email}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
-
-        {/* COUNTRY */}
-        <select
-          name="country"
-          value={form.country}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              country: e.target.value as CountryCode,
-              state: "",
-            })
-          }
-          className="w-full border p-2 rounded"
-        >
+        <select name="country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value as CountryCode, state: "" })} className="w-full border p-2 rounded">
           {Object.entries(COUNTRIES).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
+            <option key={k} value={k}>{v.label}</option>
           ))}
         </select>
 
-        {/* STATE / PROVINCE */}
-        <select
-          name="state"
-          value={form.state}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        >
+        <select name="state" value={form.state} onChange={handleChange} className="w-full border p-2 rounded">
           <option value="">Select state / province</option>
-          {regions.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
+          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
 
-        <input
-          name="county"
-          placeholder="County / Parish"
-          value={form.county}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
+        <input name="city" placeholder="City" value={form.city} onChange={handleChange} className="w-full border p-2 rounded" />
 
-        <input
-          name="city"
-          placeholder="City"
-          value={form.city}
-          onChange={handleChange}
-          className="w-full border p-2 rounded"
-        />
+        <input value={form.pin} disabled className="w-full border p-2 rounded bg-gray-100 text-center tracking-widest" />
 
-        <input
-          value={form.pin}
-          disabled
-          className="w-full border p-2 rounded bg-gray-100 text-center tracking-widest"
-        />
-
-        {/* ✍️ SIGNATURE */}
         <div>
-          <p className="text-sm font-medium mb-1">
-            Signature (finger or mouse)
-          </p>
-          <canvas
-            ref={canvasRef}
-            width={400}
-            height={150}
-            className="border rounded w-full touch-none"
-            onMouseDown={startDraw}
-            onMouseMove={drawLine}
-            onMouseUp={endDraw}
-            onMouseLeave={endDraw}
-            onTouchStart={startDraw}
-            onTouchMove={drawLine}
-            onTouchEnd={endDraw}
+          <p className="text-sm font-medium mb-1">Signature (finger or mouse)</p>
+          <canvas ref={canvasRef} width={400} height={150} className="border rounded w-full touch-none"
+            onMouseDown={startDraw} onMouseMove={drawLine} onMouseUp={endDraw} onMouseLeave={endDraw}
+            onTouchStart={startDraw} onTouchMove={drawLine} onTouchEnd={endDraw}
           />
-          <button
-            type="button"
-            onClick={clearSignature}
-            className="text-sm text-red-600 mt-2"
-          >
-            Clear signature
-          </button>
+          <button type="button" onClick={clearSignature} className="text-sm text-red-600 mt-2">Clear signature</button>
         </div>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-orange-600 text-white py-3 rounded"
-        >
+        <button type="submit" disabled={loading} className="w-full bg-orange-600 text-white py-3 rounded">
           {loading ? "Saving..." : "Register Driver"}
         </button>
       </form>

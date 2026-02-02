@@ -1,4 +1,3 @@
-// src/app/pharmacy/returns/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,12 +9,20 @@ import {
   updateDoc,
   doc,
   getDoc,
-  addDoc,
   serverTimestamp,
-  Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+
+/* =======================
+   TYPES
+======================= */
+type PumpCheck = {
+  code: string;
+  returned: boolean;
+  reason?: string;
+};
 
 type ReturnDelivery = {
   id: string;
@@ -26,18 +33,14 @@ type ReturnDelivery = {
   driverId?: string;
   clientName?: string;
   clientPhone?: string;
-  deliveryInfo?: {
-    deliveredAt?: Timestamp;
-  };
-  missingPumpsInfo?: {
-    missing: string[];
-    reason: string;
-    timePassed: string;
-  } | null;
 };
 
+/* =======================
+   PAGE
+======================= */
 export default function PharmacyReturnsPage() {
   const [returns, setReturns] = useState<ReturnDelivery[]>([]);
+  const [checks, setChecks] = useState<Record<string, PumpCheck[]>>({});
   const router = useRouter();
 
   /* =======================
@@ -45,7 +48,6 @@ export default function PharmacyReturnsPage() {
   ======================= */
   useEffect(() => {
     const stored = localStorage.getItem("pharmacy");
-
     if (!stored) {
       router.push("/pharmacy/login");
       return;
@@ -56,80 +58,81 @@ export default function PharmacyReturnsPage() {
     const q = query(
       collection(db, "deliveries"),
       where("type", "==", "return"),
-      where("pharmacyId", "==", pharmacy.id)
+      where("pharmacyId", "==", pharmacy.id),
+      where("status", "==", "returned_to_pharmacy")
     );
 
     const unsub = onSnapshot(q, async (snap) => {
-      const list = await Promise.all(
-        snap.docs
-          .map((d) => ({
-            id: d.id,
-            ...(d.data() as any),
-          }))
-          .filter(
-            (d) => d.status !== "received_by_pharmacy"
-          )
-          .map(async (delivery) => {
-            const clientSnap = await getDoc(
-              doc(db, "clients", delivery.clientId)
-            );
+      const list: ReturnDelivery[] = [];
 
-            if (clientSnap.exists()) {
-              return {
-                ...delivery,
-                clientName: clientSnap.data().name,
-                clientPhone: clientSnap.data().phone,
-              };
-            }
+      snap.forEach((d) => {
+        const data = { id: d.id, ...(d.data() as any) };
+        list.push(data);
+      });
 
-            return delivery;
-          })
-      );
+      // Inicializar checks por delivery
+      const init: Record<string, PumpCheck[]> = {};
+      list.forEach((r) => {
+        init[r.id] = r.pumpCodes.map((code) => ({
+          code,
+          returned: true,
+        }));
+      });
 
       setReturns(list);
+      setChecks(init);
     });
 
     return () => unsub();
   }, [router]);
 
   /* =======================
-     CONFIRM RECEPTION
+     CONFIRM REAL RECEPTION
   ======================= */
-  const confirmReception = async (
-    delivery: ReturnDelivery
-  ) => {
-    await updateDoc(
+  const confirmReception = async (delivery: ReturnDelivery) => {
+    const pumpChecks = checks[delivery.id];
+    if (!pumpChecks) return;
+
+    const batch = writeBatch(db);
+
+    // 1️⃣ Update each pump
+    for (const p of pumpChecks) {
+      const pumpRef = doc(db, "pumps", p.code);
+
+      if (p.returned) {
+        batch.update(pumpRef, {
+          status: "returned",
+          currentClientId: null,
+          currentDeliveryId: null,
+          lastKnownLocation: "pharmacy",
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        if (!p.reason) {
+          alert(
+            `Reason required for missing pump ${p.code}`
+          );
+          return;
+        }
+
+        batch.update(pumpRef, {
+          status: "lost",
+          lastKnownLocation: "client",
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+
+    // 2️⃣ Mark delivery as confirmed
+    batch.update(
       doc(db, "deliveries", delivery.id),
       {
         status: "received_by_pharmacy",
         receivedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       }
     );
 
-    await addDoc(collection(db, "notifications"), {
-      userId: delivery.clientId,
-      role: "client",
-      title: "Return completed",
-      message:
-        "Your pump return has been received by the pharmacy.",
-      deliveryId: delivery.id,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-
-    if (delivery.driverId) {
-      await addDoc(collection(db, "notifications"), {
-        userId: delivery.driverId,
-        role: "driver",
-        title: "Return confirmed",
-        message:
-          "The pharmacy confirmed the return.",
-        deliveryId: delivery.id,
-        read: false,
-        createdAt: serverTimestamp(),
-      });
-    }
+    await batch.commit();
   };
 
   /* =======================
@@ -145,83 +148,91 @@ export default function PharmacyReturnsPage() {
       </button>
 
       <h1 className="text-2xl font-bold mb-6">
-        Return Confirmations
+        Pump Returns – Pharmacy Control
       </h1>
 
       {returns.length === 0 && (
-        <p className="text-gray-500">
-          No returns pending confirmation.
-        </p>
+        <p>No returns pending confirmation.</p>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {returns.map((r) => (
           <div
             key={r.id}
-            className="border rounded-lg p-4 bg-white shadow"
+            className="border rounded p-4 space-y-3"
           >
-            <p>
-              <strong>Client:</strong>{" "}
-              {r.clientName || "Unknown"}
-            </p>
+            <p><b>Client:</b> {r.clientName || "—"}</p>
+            <p><b>Phone:</b> {r.clientPhone || "—"}</p>
 
-            {r.clientPhone && (
-              <p>
-                <strong>Phone:</strong>{" "}
-                {r.clientPhone}
-              </p>
-            )}
+            <h3 className="font-semibold mt-4">
+              Pump verification
+            </h3>
 
-            <p className="mt-2">
-              <strong>Delivered at:</strong>{" "}
-              {r.deliveryInfo?.deliveredAt
-                ? r.deliveryInfo.deliveredAt
-                    .toDate()
-                    .toLocaleString()
-                : "—"}
-            </p>
-
-            {r.missingPumpsInfo && (
-              <div className="mt-2 text-sm text-red-700">
-                <p>
-                  <strong>Missing pumps:</strong>{" "}
-                  {r.missingPumpsInfo.missing.join(", ")}
-                </p>
-                <p>
-                  <strong>Reason:</strong>{" "}
-                  {r.missingPumpsInfo.reason}
-                </p>
-                <p>
-                  <strong>Time passed:</strong>{" "}
-                  {r.missingPumpsInfo.timePassed}
-                </p>
-              </div>
-            )}
-
-            <p className="mt-2 font-semibold">
-              Pump Codes:
-            </p>
-            <ul className="list-disc ml-5">
-              {r.pumpCodes.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-
-            <p className="mt-2">
-              <strong>Status:</strong>{" "}
-              <span className="font-semibold">
-                {r.status}
-              </span>
-            </p>
-
-            {r.status === "returned_to_pharmacy" && (
-              <button
-                onClick={() => confirmReception(r)}
-                className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
+            {checks[r.id]?.map((p, idx) => (
+              <div
+                key={p.code}
+                className="border rounded p-3 mt-2"
               >
-                Confirm Reception
-              </button>
-            )}
+                <p className="font-medium">{p.code}</p>
+
+                <label className="flex gap-3 mt-2">
+                  <input
+                    type="radio"
+                    checked={p.returned}
+                    onChange={() => {
+                      const next = [...checks[r.id]];
+                      next[idx].returned = true;
+                      next[idx].reason = "";
+                      setChecks({
+                        ...checks,
+                        [r.id]: next,
+                      });
+                    }}
+                  />
+                  Returned
+                </label>
+
+                <label className="flex gap-3 mt-1">
+                  <input
+                    type="radio"
+                    checked={!p.returned}
+                    onChange={() => {
+                      const next = [...checks[r.id]];
+                      next[idx].returned = false;
+                      setChecks({
+                        ...checks,
+                        [r.id]: next,
+                      });
+                    }}
+                  />
+                  Not returned
+                </label>
+
+                {!p.returned && (
+                  <textarea
+                    placeholder="Reason why pump was not returned"
+                    className="w-full border p-2 mt-2"
+                    value={p.reason || ""}
+                    onChange={(e) => {
+                      const next = [...checks[r.id]];
+                      next[idx].reason =
+                        e.target.value;
+                      setChecks({
+                        ...checks,
+                        [r.id]: next,
+                      });
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+
+            <button
+              onClick={() => confirmReception(r)}
+              className="w-full bg-green-600 text-white py-2 rounded mt-4"
+            >
+              Confirm Pump Reception
+            </button>
           </div>
         ))}
       </div>
