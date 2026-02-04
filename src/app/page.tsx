@@ -45,7 +45,6 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// GEOGRAPHIC DATA
 const LOCATIONS: Record<string, { label: string, states: string[] }> = {
   US: { label: "United States", states: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD", "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC", "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"] },
   EC: { label: "Ecuador", states: ["Azuay", "Bolívar", "Cañar", "Carchi", "Chimborazo", "Cotopaxi", "El Oro", "Esmeraldas", "Galápagos", "Guayas", "Imbabura", "Loja", "Los Ríos", "Manabí", "Morona Santiago", "Napo", "Orellana", "Pastaza", "Pichincha", "Santa Elena", "Santo Domingo", "Sucumbíos", "Tungurahua", "Zamora Chinchipe"] }
@@ -60,7 +59,7 @@ interface Order { id: string; orderCode: string; clientName: string; clientEmail
 interface Employee { id: string; name: string; pin: string; role: 'driver' | 'pharmacy_admin' | 'pharmacy_staff'; email: string; city?: string; state?: string; country?: string; pharmacyId?: string; signature?: string; }
 
 /* ==========================================================================
-   3. BASE UI COMPONENTS
+   3. ATOMIC UI COMPONENTS
    ========================================================================== */
 
 function LoadingScreen() { 
@@ -76,9 +75,9 @@ function ErrorScreen({ msg, onRetry }: { msg: string, onRetry: () => void }) {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-8 text-center">
         <XCircle className="w-16 h-16 text-red-500 mb-4 mx-auto" />
-        <h2 className="text-xl font-bold mb-2 uppercase italic tracking-tighter text-white">System Error</h2>
+        <h2 className="text-xl font-bold mb-2 uppercase italic tracking-tighter">Connection Error</h2>
         <p className="text-slate-400 text-xs mb-8 max-w-xs mx-auto opacity-60">{msg}</p>
-        <button onClick={onRetry} className="bg-emerald-500 text-slate-900 px-8 py-4 rounded-3xl font-black uppercase text-xs flex items-center gap-2 active:scale-95 transition-all mx-auto shadow-lg">
+        <button onClick={onRetry} className="bg-emerald-500 text-slate-900 px-8 py-4 rounded-3xl font-black uppercase text-xs flex items-center gap-2 active:scale-95 transition-all mx-auto shadow-lg shadow-emerald-500/20">
           <RefreshCw className="w-4 h-4" /> Reconnect Now
         </button>
     </div>
@@ -128,9 +127,9 @@ function SignaturePad({ onSave, label }: { onSave: (data: string) => void, label
             <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1"><PenTool className="w-3 h-3"/> {label}</label>
             <button onClick={() => { const c = canvasRef.current; const ctx = c?.getContext('2d'); ctx?.clearRect(0,0,c!.width,c!.height); setHasSignature(false); onSave(""); }} type="button" className="text-red-400 p-1 hover:bg-red-50 rounded-full transition-colors"><Eraser className="w-4 h-4"/></button>
         </div>
-        <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 overflow-hidden touch-none relative h-32 text-slate-900">
+        <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 overflow-hidden touch-none relative h-32">
             <canvas ref={canvasRef} width={400} height={200} className="w-full h-full block cursor-crosshair" onMouseDown={startDrawing} onTouchStart={startDrawing} />
-            {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-[10px] font-black uppercase">Sign with finger</div>}
+            {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-[10px] font-black uppercase text-center">Draw signature with finger</div>}
         </div>
     </div>
   );
@@ -179,64 +178,76 @@ function MenuCard({ icon, label, color, onClick, full }: any) {
 
 function ManualView({ onBack }: { onBack: () => void }) {
   const steps = [
-    { title: "Business Activation", content: "To join Dispatcher Pro, your pharmacy must obtain an Activation Key. Go to 'Register Profile' and select 'Pharmacy Registration'. Link your location to enable regional driver assignment.", icon: <Key className="w-5 h-5"/> },
-    { title: "Inventory Control", content: "Upload your medical assets using Serial Numbers (S/N). The system monitors real-time custody whether they are at the office, with a driver, or at a patient's home.", icon: <Database className="w-5 h-5"/> },
-    { title: "Dispatch Operations", content: "Select a patient and assign equipment. The system automatically detects if the patient has previous unreturned assets and flags the driver to collect them.", icon: <Send className="w-5 h-5"/> },
-    { title: "Driver Debt System", content: "Each asset is a financial responsibility for the driver. Debt is only cleared when the pharmacy receiver verifies physical handover via dual-digital signature.", icon: <ShieldCheck className="w-5 h-5"/> }
+    { title: "Business Activation", content: "To join Dispatcher Pro, your pharmacy must obtain an Activation Key. Go to 'Register Profile' and select 'Pharmacy Registration'. Link your location to enable regional driver assignment.", icon: <Key className="w-5 h-5 text-indigo-500"/> },
+    { title: "Inventory Control", content: "Upload your medical assets using Serial Numbers (S/N). The system monitors real-time custody whether they are at the office, with a driver, or at a patient's home.", icon: <Database className="w-5 h-5 text-indigo-500"/> },
+    { title: "Dispatch Operations", content: "Select a patient and assign equipment. The system automatically detects if the patient has previous unreturned assets and flags the driver to collect them.", icon: <Send className="w-5 h-5 text-indigo-500"/> },
+    { title: "Driver Debt System", content: "Each asset is a financial responsibility for the driver. Debt is only cleared when the pharmacy receiver verifies physical handover via dual-digital signature.", icon: <ShieldCheck className="w-5 h-5 text-indigo-500"/> }
   ];
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 animate-in fade-in">
         <header className="p-6 bg-[#0f172a] text-white flex justify-between items-center shadow-lg border-b border-indigo-500/20">
             <div className="flex items-center gap-3">
-                <div className="bg-emerald-500 p-2 rounded-xl shadow-lg"><BookOpen className="w-6 h-6 text-slate-950"/></div>
+                <div className="bg-emerald-500 p-2 rounded-xl shadow-lg shadow-emerald-500/30"><BookOpen className="w-6 h-6 text-slate-950"/></div>
                 <div>
-                    <h2 className="text-xl font-black italic uppercase tracking-tighter text-white">Operating Manual</h2>
-                    <p className="text-[8px] font-bold text-indigo-400 uppercase tracking-widest">User Protocol v2.4</p>
+                    <h2 className="text-xl font-black italic uppercase tracking-tighter text-white">User Manual</h2>
+                    <p className="text-[8px] font-bold text-indigo-400 uppercase tracking-widest text-indigo-400">Operational Protocol v2.0</p>
                 </div>
             </div>
             <button onClick={onBack} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all text-white"><X className="w-6 h-6 text-white"/></button>
         </header>
         <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
-            <div className="bg-indigo-600 p-8 rounded-4xl text-white shadow-2xl shadow-indigo-200">
-                <h3 className="text-2xl font-black italic mb-2 uppercase text-white">Core Logistics Guide</h3>
-                <p className="text-xs opacity-90 leading-relaxed text-white text-white">Follow these guidelines to maintain a 0% asset loss rate. Secure every handover with digital proof.</p>
+            <div className="bg-indigo-600 p-8 rounded-4xl text-white shadow-2xl shadow-indigo-200 relative overflow-hidden">
+                <div className="relative z-10 text-white">
+                    <h3 className="text-2xl font-black italic mb-2 uppercase">Welcome to Dispatcher Pro</h3>
+                    <p className="text-xs opacity-90 leading-relaxed">This manual provides the essential protocols for medical asset tracking. Follow these steps to ensure a secure chain of custody for all equipment.</p>
+                </div>
+                <Info className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 rotate-12 text-white" />
             </div>
             {steps.map((s, i) => (
                 <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-3 mb-3 text-indigo-600">
+                    <div className="flex items-center gap-3 mb-4 text-indigo-600">
                         <div className="bg-indigo-50 p-3 rounded-2xl">{s.icon}</div>
                         <h4 className="font-black uppercase text-sm tracking-tight text-indigo-600">{s.title}</h4>
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed text-slate-600 font-medium">{s.content}</p>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">{s.content}</p>
                 </div>
             ))}
+            <div className="p-8 bg-slate-200/50 rounded-4xl border-2 border-dashed border-slate-300 text-center">
+                <Shield className="w-10 h-10 mx-auto mb-4 text-slate-400"/>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-loose text-slate-500">Secure Asset Protocol Active</p>
+            </div>
         </div>
         <div className="p-6 fixed bottom-0 left-0 w-full bg-slate-50/80 backdrop-blur-md">
-            <button onClick={onBack} className="w-full bg-[#0f172a] text-white py-5 rounded-3xl font-black uppercase text-xs">Return to Main Menu</button>
+            <button onClick={onBack} className="w-full bg-[#0f172a] text-white py-5 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white">Understood, Go Back</button>
         </div>
     </div>
   );
 }
 
 /* ==========================================================================
-   5. LOGISTICS COMPONENTS (HISTORY, LISTS, FORMS)
+   5. LOGISTICS COMPONENTS
    ========================================================================== */
 
 function HistoryLogView({ orders, onBack }: any) {
-  const hist = (orders || []).filter((o: any) => o.status === 'delivered' || o.status === 'cancelled').sort((a:any,b:any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  const hist = (orders || []).filter((o: any) => o.status === 'delivered' || o.status === 'cancelled').sort((a:any,b:any) => {
+    const timeA = a.createdAt instanceof Timestamp ? a.createdAt.seconds : 0;
+    const timeB = b.createdAt instanceof Timestamp ? b.createdAt.seconds : 0;
+    return timeB - timeA;
+  });
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
         <div className="p-6 flex justify-between items-center bg-white border-b sticky top-0 z-20">
-            <h2 className="text-xl font-black italic uppercase text-slate-900">History Log</h2>
-            <button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button>
+            <h2 className="text-xl font-black italic uppercase text-slate-900">System History</h2>
+            <button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 text-slate-900">
             {hist.length === 0 ? <p className="text-center py-20 opacity-30 uppercase text-xs font-black">History empty</p> : hist.map((o: any) => (
                 <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 text-slate-900 animate-in">
                     <div className="flex justify-between items-start mb-2 text-slate-900"><span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest text-indigo-600">#{o.orderCode}</span><span className={`text-[8px] px-2 py-1 rounded font-black uppercase ${o.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>{o.status}</span></div>
                     <h4 className="font-bold text-slate-800">{o.clientName}</h4>
                     <p className="text-[10px] text-slate-400 mb-3 uppercase text-slate-400">{o.address}</p>
-                    {o.signatureClient && (<div className="mt-2 border-t border-slate-100 pt-2 text-center text-slate-900"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Receiver Signature</p><img src={o.signatureClient} alt="Sig" className="h-8 mx-auto object-contain opacity-60" /></div>)}
+                    {o.signatureClient && (<div className="mt-2 border-t border-slate-100 pt-2 text-center text-slate-900"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Identity Verification</p><img src={o.signatureClient} alt="Sig" className="h-8 mx-auto object-contain opacity-60" /></div>)}
                 </div>
             ))}
         </div>
@@ -245,7 +256,7 @@ function HistoryLogView({ orders, onBack }: any) {
 }
 
 function ListPumps({ pumps, readOnly }: { pumps: Pump[], readOnly?: boolean }) {
-  const remove = async(id:string) => { if(confirm("Permanently delete equipment?")) await deleteDoc(doc(db,'pumps',id)); };
+  const remove = async(id:string) => { if(confirm("Delete equipment from system?")) await deleteDoc(doc(db,'pumps',id)); };
   return (
     <div className="space-y-3 pb-20 animate-in fade-in">
       <div>
@@ -256,7 +267,7 @@ function ListPumps({ pumps, readOnly }: { pumps: Pump[], readOnly?: boolean }) {
               <p className="font-bold text-slate-800">{p.brand || 'No Brand'}</p>
               <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-lg mt-1 inline-block ${p.status === 'with_driver' ? 'bg-blue-100 text-blue-600' : p.status === 'with_client' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>{p.status.replace('_', ' ')}</span>
             </div>
-            {!readOnly && <button onClick={() => remove(p.id)} className="text-slate-300 p-2 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>}
+            {!readOnly && <button onClick={() => remove(p.id)} className="text-slate-300 p-2 hover:text-red-500 transition-colors text-slate-300"><Trash2 className="w-4 h-4"/></button>}
           </div>
         ))}
       </div>
@@ -271,7 +282,7 @@ function ListClients({ clients, readOnly }: { clients: Client[], readOnly?: bool
       <div>
         {clients.map((c: Client) => (
           <div key={c.id} className="bg-white p-6 rounded-3xl border flex flex-col gap-1 shadow-sm relative mb-3 border-slate-100 text-slate-900">
-            {!readOnly && <button onClick={() => del(c.id)} className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
+            {!readOnly && <button onClick={() => del(c.id)} className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors text-slate-300"><Trash2 className="w-4 h-4" /></button>}
             <h4 className="font-black text-slate-800 text-lg text-slate-900">{c.name}</h4>
             <p className="text-xs text-slate-400 flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3" /> {c.email}</p>
             <p className="text-xs text-slate-400 flex items-center gap-1 text-slate-400"><MapPin className="w-3 h-3" /> {c.address}, {c.city}</p>
@@ -282,21 +293,25 @@ function ListClients({ clients, readOnly }: { clients: Client[], readOnly?: bool
   );
 }
 
+/* ==========================================================================
+   6. LOGISTICS FORMS
+   ========================================================================== */
+
 function AddPumpForm({ onFinish, pharmacyId }: any) {
   const [f, setF] = useState({ code: '', brand: '', model: '' }); const [msg, setMsg] = useState("");
   const save = async () => { if (!f.code) return; const dateStr = new Date().toLocaleDateString('en-US'); await addDoc(collection(db, 'pumps'), { ...f, status: 'available', lastReview: dateStr, pharmacyId }); setMsg(`S/N ${f.code} saved`); setF({ code: '', brand: '', model: '' }); setTimeout(() => setMsg(""), 3000); };
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 text-slate-900">
-      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">New Asset</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
+      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">Register Asset</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
       {msg && <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl text-center font-bold text-xs">{msg}</div>}
       <div className="space-y-4 bg-white p-6 rounded-4xl border border-slate-100 shadow-sm text-slate-900">
-        <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold focus:border-indigo-500 text-slate-900" placeholder="Serial Number (S/N)" value={f.code} onChange={e=>setF({...f, code: e.target.value})} />
-        <div className="grid grid-cols-2 gap-2 text-slate-900">
+        <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold focus:border-indigo-500 text-slate-900 text-slate-900" placeholder="Serial Number (S/N)" value={f.code} onChange={e=>setF({...f, code: e.target.value})} />
+        <div className="grid grid-cols-2 gap-2">
           <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm text-slate-900" placeholder="Brand Name" value={f.brand} onChange={e=>setF({...f, brand: e.target.value})} />
           <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm text-slate-900" placeholder="Model Number" value={f.model} onChange={e=>setF({...f, model: e.target.value})} />
         </div>
       </div>
-      <button onClick={save} className="w-full bg-[#0f172a] text-white py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white shadow-indigo-500/20">Confirm Asset Registration</button>
+      <button onClick={save} className="w-full bg-[#0f172a] text-white py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white shadow-indigo-500/20">Complete Registration</button>
     </div>
   );
 }
@@ -305,18 +320,18 @@ function AddClientForm({ onFinish, pharmacyId, user }: any) {
   const [f, setF] = useState({ name: '', email: '', address: '', city: '', state: '' }); const [msg, setMsg] = useState("");
   const save = async () => { if (!f.name) return; await addDoc(collection(db, 'clients'), { ...f, pharmacyId, country: user.country || 'EC' }); setMsg(`Patient ${f.name} saved`); setF({ name: '', email: '', address: '', city: '', state: '' }); setTimeout(() => setMsg(""), 3000); };
   return (
-    <div className="space-y-6 animate-in slide-in-from-right-4 text-slate-900">
-      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase tracking-tighter text-slate-900">New Patient Entry</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold transition-colors hover:bg-slate-200 text-slate-500">Back</button></div>
+    <div className="space-y-6 animate-in slide-in-from-right-4 text-slate-900 text-slate-900 text-slate-900">
+      <div className="flex justify-between items-center text-slate-900 text-slate-900 text-slate-900"><h3 className="font-black text-xl italic uppercase tracking-tighter">New Patient Entry</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold transition-colors hover:bg-slate-200 text-slate-500">Back</button></div>
       {msg && <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl text-center font-bold text-xs">{msg}</div>}
-      <div className="bg-white p-6 rounded-4xl border border-slate-100 space-y-4 shadow-sm text-slate-900">
-        <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="Full Legal Name" value={f.name} onChange={e=>setF({...f, name: e.target.value})} />
-        <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="Patient Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} />
-        <div className="grid grid-cols-2 gap-2 text-slate-900 text-slate-900 text-slate-900">
-          <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="Home Address" value={f.address} onChange={e=>setF({...f, address: e.target.value})} />
-          <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="City" value={f.city} onChange={e=>setF({...f, city: e.target.value})} />
+      <div className="bg-white p-6 rounded-4xl border border-slate-100 space-y-4 shadow-sm text-slate-900 text-slate-900 text-slate-900">
+        <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900 text-slate-900 text-slate-900" placeholder="Full Legal Name" value={f.name} onChange={e=>setF({...f, name: e.target.value})} />
+        <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900 text-slate-900 text-slate-900" placeholder="Patient Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} />
+        <div className="grid grid-cols-2 gap-2 text-slate-900">
+          <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900 text-slate-900 text-slate-900" placeholder="Home Address" value={f.address} onChange={e=>setF({...f, address: e.target.value})} />
+          <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900 text-slate-900 text-slate-900" placeholder="City" value={f.city} onChange={e=>setF({...f, city: e.target.value})} />
         </div>
       </div>
-      <button onClick={save} className="w-full bg-emerald-600 text-slate-900 py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white">Register Patient Profile</button>
+      <button onClick={save} className="w-full bg-emerald-600 text-slate-900 py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white shadow-emerald-500/20">Register Profile</button>
     </div>
   );
 }
@@ -331,28 +346,28 @@ function CreateDeliveryForm({ clients, pumps, onFinish, user, pharmacyId }: any)
     onFinish();
   };
   return (
-    <div className="space-y-6 animate-in zoom-in-95 text-slate-900">
+    <div className="space-y-6 animate-in zoom-in-95 text-slate-900 text-slate-900 text-slate-900">
       <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-6 text-slate-900 text-slate-900">
         <SearchableSelect label="1. Select Recipient Patient" options={clients.map((c:any)=>({label:c.name, value:c.id}))} value={cId} onChange={setCId} />
         {debts.length > 0 && (
-          <div className="bg-red-50 p-4 rounded-2xl border border-red-100 animate-pulse shadow-sm text-slate-900">
-            <p className="text-[10px] font-black text-red-600 mb-2 uppercase flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> UNRETURNED ASSETS AT HOME:</p>
+          <div className="bg-red-50 p-4 rounded-2xl border border-red-100 animate-pulse shadow-sm text-slate-900 text-slate-900">
+            <p className="text-[10px] font-black text-red-600 mb-2 uppercase flex items-center gap-1 text-red-600"><AlertTriangle className="w-3 h-3"/> UNRETURNED ASSETS AT HOME:</p>
             <div className="flex flex-wrap gap-1 text-slate-900">{debts.map((p: any) => <span key={p.id} className="text-[10px] bg-white px-2 py-1 rounded font-mono font-bold text-red-700 border border-red-200 text-red-700">{p.code}</span>)}</div>
           </div>
         )}
         <SearchableSelect label="2. Assign Delivery Items" options={pumps.filter((p:any)=>p.status==='available'&&!sP.find((x: any)=>x.id===p.id)).map((p:any)=>({label:p.code, value:p.id}))} value="" onChange={add} />
         {sP.length > 0 && (
-          <div className="space-y-2 text-slate-900">
+          <div className="space-y-2 text-slate-900 text-slate-900">
             {sP.map((p: any) => (
               <div key={p.id} className="flex justify-between items-center p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-slate-900">
                 <div><p className="font-black text-xs uppercase opacity-70">S/N: {p.code}</p></div>
-                <button onClick={()=>setSP((prev: any[]) => prev.filter(x=>x.id!==p.id))} className="text-red-500 hover:bg-red-50 p-1 rounded-full"><XCircle className="w-5 h-5"/></button>
+                <button onClick={()=>setSP((prev: any[]) => prev.filter(x=>x.id!==p.id))} className="text-red-500 hover:bg-red-50 p-1 rounded-full text-red-500"><XCircle className="w-5 h-5"/></button>
               </div>
             ))}
           </div>
         )}
       </div>
-      <button onClick={create} disabled={!cId || sP.length === 0} className="w-full bg-[#0f172a] text-white py-6 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all disabled:opacity-50 text-white">Initialize Dispatch</button>
+      <button onClick={create} disabled={!cId || sP.length === 0} className="w-full bg-[#0f172a] text-white py-6 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all disabled:opacity-50 text-white shadow-slate-900/10">Initialize Dispatch</button>
     </div>
   );
 }
@@ -370,18 +385,23 @@ function ReturnPumpsForm({ drivers, pumps, onFinish, pharmacyId }: any) {
     };
     return (
         <div className="space-y-6 p-4 animate-in zoom-in-95 text-slate-900 text-slate-900">
-            <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">Inventory Reception</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
+            <div className="flex justify-between items-center text-slate-900 text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">Inventory Reception</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
             <div className="bg-white p-6 rounded-4xl shadow-lg border border-slate-100 space-y-6 text-slate-900">
                 <SearchableSelect label="1. Select Returning Driver" options={indebtedDrivers.map((d:any)=>({label:d.name, value:d.id}))} value={driverId} onChange={(val: string) => { setDriverId(val); setSelectedPumps([]); }} />
-                {driverId && driverPumps.map((p: any) => (
-                  <div key={p.id} onClick={() => setSelectedPumps((s: string[]) => s.includes(p.id) ? s.filter((i: any)=>i!==p.id) : [...s, p.id])} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedPumps.includes(p.id) ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100'} text-slate-900`}>
-                    <div><p className="font-black text-slate-900 text-sm">S/N: {p.code}</p></div>
-                    {selectedPumps.includes(p.id) && <CheckCircle className="w-5 h-5 text-emerald-500" />}
+                {driverId && driverPumps.length > 0 && (
+                  <div className="space-y-2 text-slate-900">
+                    <p className="text-[10px] font-black text-slate-400 uppercase ml-2 text-slate-400">Equipment in driver possession</p>
+                    {driverPumps.map((p: any) => (
+                      <div key={p.id} onClick={() => setSelectedPumps((s: string[]) => s.includes(p.id) ? s.filter((i: any)=>i!==p.id) : [...s, p.id])} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedPumps.includes(p.id) ? 'border-emerald-500 bg-emerald-50 text-emerald-500' : 'border-slate-100'} text-slate-900 text-slate-900`}>
+                        <div><p className="font-black text-slate-900 text-sm">S/N: {p.code}</p></div>
+                        {selectedPumps.includes(p.id) && <CheckCircle className="w-5 h-5 text-emerald-500" />}
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {selectedPumps.length > 0 && (<div className="space-y-4 pt-4 border-t border-slate-100 text-slate-900"><SignaturePad onSave={setSignDriver} label="Driver Handover Signature" /><SignaturePad onSave={setSignStaff} label="Staff Receipt Signature" /></div>)}
+                )}
+                {selectedPumps.length > 0 && (<div className="space-y-4 pt-4 border-t border-slate-100 text-slate-900 text-slate-900"><SignaturePad onSave={setSignDriver} label="Driver Handover Signature" /><SignaturePad onSave={setSignStaff} label="Office Receipt Confirmation" /></div>)}
             </div>
-            <button onClick={processReturn} disabled={loading || !signDriver || !signStaff || selectedPumps.length === 0} className="w-full bg-[#10b981] text-slate-900 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 disabled:opacity-50 shadow-xl transition-all text-white shadow-emerald-500/20">Clear Driver Debt & Handover</button>
+            <button onClick={processReturn} disabled={loading || !signDriver || !signStaff || selectedPumps.length === 0} className="w-full bg-[#10b981] text-slate-900 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 disabled:opacity-50 shadow-xl transition-all text-white shadow-emerald-500/20">Clear Driver Debt</button>
         </div>
     );
 }
@@ -390,7 +410,7 @@ function StaffManager({ staff, pharmacyId }: any) {
   const [f, setF] = useState({ name: '', email: '' }); const [p, setP] = useState(""); const [s, setS] = useState("");
   const create = async () => { if (!f.name || !s) return; const pinVal = Math.floor(1000 + Math.random()*9000).toString(); await addDoc(collection(db, 'pharmacyEmployees'), { ...f, pin: pinVal, role: 'pharmacy_staff', pharmacyId, signature: s }); setP(pinVal); };
   return (
-    <div className="space-y-6 animate-in fade-in text-slate-900"> 
+    <div className="space-y-6 animate-in fade-in text-slate-900 text-slate-900 text-slate-900 text-slate-900 text-slate-900"> 
       {p ? (
         <div className="bg-emerald-500 text-white p-8 rounded-4xl text-center shadow-lg text-white">
           <p className="font-bold mb-2 uppercase tracking-widest text-white">STAFF ACCESS PIN:</p>
@@ -398,10 +418,10 @@ function StaffManager({ staff, pharmacyId }: any) {
           <button onClick={()=>setP("")} className="mt-6 text-xs underline text-white">Register another member</button>
         </div>
       ) : (
-        <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-4 text-slate-900 text-slate-900">
-          <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-slate-900" placeholder="Employee Full Name" onChange={e=>setF({...f, name: e.target.value})} />
-          <SignaturePad onSave={setS} label="Employee Identification Signature" />
-          <button onClick={create} disabled={!s} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs disabled:opacity-50 active:scale-95 transition-all text-white">Create Access PIN</button>
+        <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-4 text-slate-900 text-slate-900 text-slate-900 text-slate-900">
+          <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-slate-900 text-slate-900" placeholder="Full Staff Name" onChange={e=>setF({...f, name: e.target.value})} />
+          <SignaturePad onSave={setS} label="Identity Security Signature" />
+          <button onClick={create} disabled={!s} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs disabled:opacity-50 active:scale-95 transition-all text-white shadow-slate-900/10">Generate Access Key</button>
         </div>
       )}
     </div>
@@ -409,8 +429,15 @@ function StaffManager({ staff, pharmacyId }: any) {
 }
 
 /* ==========================================================================
-   6. ROLE VIEWS & DASHBOARDS
+   7. MAIN PANEL VIEWS (DASHBOARDS)
    ========================================================================== */
+
+function SuperAdminView({ onLogout }: any) {
+    const [l, setL] = useState<any[]>([]); const [e, setE] = useState("");
+    useEffect(() => onSnapshot(query(collection(db, 'pharmacyEmployees'), where('role','==','license_code')), s => setL(s.docs.map(d=>({id:d.id,...d.data()}))), (err) => console.error(err)), []);
+    const gen = async () => { if(!e) return; const code=`FARM-${Math.random().toString(36).substring(2,6).toUpperCase()}`; await addDoc(collection(db,'pharmacyEmployees'),{code, role:'license_code', status:'active', assignedEmail:e, createdAt:serverTimestamp()}); setE(""); };
+    return (<div className="min-h-screen bg-[#0f172a] text-white p-8 max-w-md mx-auto flex flex-col text-white text-white text-white text-white"><header className="flex justify-between items-end mb-10 text-white"><div><h2 className="text-3xl font-black italic tracking-tighter uppercase text-white">Master Hub</h2><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest opacity-60 text-emerald-500 text-emerald-500">Global Licenses</p></div><button onClick={onLogout} className="p-4 bg-white/10 rounded-2xl transition-colors hover:bg-white/20 text-white"><LogOut/></button></header><div className="space-y-6 flex-1 overflow-y-auto text-white text-white"><div className="bg-white/5 p-8 rounded-4xl border border-white/10 space-y-4 shadow-2xl text-white text-white"><h3 className="font-bold flex gap-2 text-white text-sm uppercase tracking-widest text-white text-white text-white"><Ticket className="text-emerald-500"/> Create License Key</h3><input className="w-full bg-slate-800 p-4 rounded-2xl outline-none text-sm border border-white/5 font-bold text-white uppercase placeholder-white/20 text-white text-white" placeholder="Client email" value={e} onChange={v=>setE(v.target.value)}/><button onClick={gen} className="w-full bg-emerald-600 text-slate-950 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 shadow-lg shadow-emerald-500/20 text-slate-950 text-slate-950">Generate Key</button></div><div className="space-y-3 text-white">{l.map((x: any)=>(<div key={x.id} className="bg-white/5 p-5 rounded-3xl flex justify-between border border-white/5 items-center text-white text-white text-white"><div><p className="font-black text-emerald-400 tracking-wider text-lg text-emerald-400 text-emerald-400 text-emerald-400">{x.code}</p><p className="text-[10px] opacity-40 uppercase tracking-widest text-white text-white">{x.assignedEmail}</p></div><span className={`text-[8px] px-3 py-1 rounded-full uppercase font-black ${x.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{x.status}</span></div>))}</div></div></div>);
+}
 
 function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, pharmacyId, allPumps, drivers, onOpenManual }: any) {
   const [section, setSection] = useState<'menu'|'add_pump'|'list_pumps'|'add_client'|'list_clients'|'create_delivery'|'staff'|'history'|'receive_returns'>('menu');
@@ -418,14 +445,14 @@ function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, phar
     <div className="min-h-screen bg-slate-50 flex flex-col relative text-slate-900">
         <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm text-slate-900">
           <div><h2 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">{user.city} Fleet</h2><p className="text-[10px] font-black text-emerald-600 mt-1 uppercase tracking-widest">{user.role.replace('_', ' ')}</p></div>
-          <div className="flex gap-2">
-            <button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl transition-colors hover:bg-indigo-100"><BookOpen className="w-6 h-6"/></button>
-            {section!=='menu'?<button onClick={()=>setSection('menu')} className="p-4 bg-slate-100 rounded-2xl transition-colors hover:bg-slate-200 text-slate-900"><ChevronLeft/></button>:<button onClick={onLogout} className="p-4 bg-red-50 text-red-500 rounded-2xl"><LogOut/></button>}
+          <div className="flex gap-2 text-slate-900">
+            <button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl transition-colors hover:bg-indigo-100 text-indigo-600"><BookOpen className="w-6 h-6"/></button>
+            {section!=='menu'?<button onClick={()=>setSection('menu')} className="p-4 bg-slate-100 rounded-2xl transition-colors hover:bg-slate-200 text-slate-900 text-slate-900 text-slate-900"><ChevronLeft/></button>:<button onClick={onLogout} className="p-4 bg-red-50 text-red-500 rounded-2xl text-red-500 text-red-500 transition-all shadow-sm"><LogOut/></button>}
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-6 pb-24 text-slate-900 text-slate-900">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 text-slate-900">
             {section==='menu' && (
-              <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+              <div className="grid grid-cols-2 gap-4 animate-in fade-in text-slate-900">
                 <MenuCard icon={<Plus/>} label="New Asset" color="bg-indigo-600" onClick={()=>setSection('add_pump')}/>
                 <MenuCard icon={<Database/>} label="Inventory" color="bg-[#0f172a]" onClick={()=>setSection('list_pumps')}/>
                 <MenuCard icon={<UserPlus/>} label="New Patient" color="bg-emerald-600" onClick={()=>setSection('add_client')}/>
@@ -449,63 +476,10 @@ function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, phar
   );
 }
 
-function SelectionView({ onLogin, onRegister, onOpenManual }: { onLogin: () => void, onRegister: () => void, onOpenManual: () => void }) {
-  return (
-    <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white relative overflow-hidden text-center text-white">
-        <div className="w-24 h-24 bg-emerald-500 rounded-3xl flex items-center justify-center mb-8 shadow-2xl animate-bounce duration-[3000ms] shadow-emerald-500/20 text-white"><Truck className="w-12 h-12 text-[#0f172a]" /></div>
-        <h1 className="text-4xl font-black italic tracking-tighter mb-1 uppercase text-white">Dispatcher Pro</h1>
-        <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-16 text-center text-white opacity-50">Smart Medical Logistics Platform</p>
-        <div className="w-full max-w-xs space-y-4 text-white">
-            <button onClick={onLogin} className="w-full bg-white text-[#0f172a] py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 shadow-xl transition-all active:scale-95 text-[#0f172a]"><span>Portal Access</span><ArrowRight className="w-5 h-5 text-emerald-600"/></button>
-            <button onClick={onRegister} className="w-full bg-white/5 border border-white/10 py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 hover:bg-white/10 transition-all active:scale-95 text-white"><span>Register Business</span><Plus className="w-5 h-5 text-emerald-400"/></button>
-            <button onClick={onOpenManual} className="w-full mt-4 flex items-center justify-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors text-indigo-400"><BookOpen className="w-4 h-4"/> Help & Manual</button>
-        </div>
-        <div className="absolute bottom-10">
-            <button onClick={onLogin} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors text-slate-600">Internal Ops Only</button>
-        </div>
-    </div>
-  );
-}
-
-function LoginView({ pin, error, onInput, onClear, onBack }: any) {
-  return (
-    <div className="min-h-screen bg-[#0f172a] flex flex-col items-center p-8 text-white text-white">
-        <button onClick={onBack} className="self-start p-4 bg-white/5 rounded-2xl mb-8 transition-colors hover:bg-white/10 text-white"><ChevronLeft className="text-white"/></button>
-        <h2 className="text-3xl font-black italic mb-2 tracking-tighter uppercase text-white text-center">Secure Access</h2>
-        <div className="flex gap-4 mb-16 h-8 mt-10 text-white">{[...Array(4)].map((_, i) => (<div key={i} className={`w-3 h-3 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-emerald-500 scale-150 shadow-lg shadow-emerald-500/50' : 'bg-slate-800'}`} />))}</div>
-        {error && <p className="text-red-500 text-[10px] font-black uppercase mb-6 animate-pulse text-center text-red-500">{error}</p>}
-        <div className="grid grid-cols-3 gap-4 w-full max-w-[300px] text-white">
-            {[1,2,3,4,5,6,7,8,9].map(n => (<button key={n} onClick={() => onInput(n.toString())} className="h-20 rounded-3xl bg-white/5 text-2xl font-black hover:bg-white/10 active:scale-90 transition-all text-white">{n}</button>))}
-            <button onClick={onClear} className="h-20 rounded-3xl bg-red-500/10 text-red-500 font-black text-xs uppercase flex items-center justify-center active:scale-95 text-red-500">CLR</button>
-            <button onClick={() => onInput("0")} className="h-20 rounded-3xl bg-white/5 text-2xl font-black text-white text-white">0</button>
-        </div>
-    </div>
-  );
-}
-
-function DriverApp({ orders, allPumps, user, onLogout, myCustodyPumps, onOpenManual, allOrders }: any) {
-  const activeOrder = allOrders.find((o: any) => o.claimedBy === user.id && o.status !== 'delivered' && o.status !== 'cancelled');
-  const claimOrder = async (id: string) => { await updateDoc(doc(db, 'deliveries', id), { status: 'claimed', claimedBy: user.id, claimedAt: serverTimestamp() }); };
-  if (activeOrder) return <DriverWorkflow order={activeOrder} allPumps={allPumps} user={user} />;
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
-        <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm text-slate-900">
-          <div><h2 className="text-2xl font-black italic text-[#0f172a] uppercase tracking-tighter text-slate-900">{user.city} Fleet</h2><p className="text-[10px] font-black text-indigo-600 mt-1 uppercase tracking-widest text-slate-900">{user.name}</p></div>
-          <div className="flex gap-2">
-            <button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><BookOpen className="w-6 h-6"/></button>
-            <button onClick={onLogout} className="p-4 bg-slate-100 rounded-2xl text-slate-900 transition-colors active:bg-slate-200 text-slate-900"><LogOut/></button>
-          </div>
-        </header>
-        {myCustodyPumps.length > 0 && (<div className="mx-6 mt-4 bg-red-500 p-5 rounded-3xl text-white shadow-lg animate-pulse text-white"><div className="flex items-center gap-2 mb-2 text-white"><AlertTriangle/><span className="font-black text-xs uppercase tracking-widest text-white text-white">HANDOVER REQUIRED</span></div><div className="flex flex-wrap gap-2 text-white text-white">{myCustodyPumps.map((p:any) => <span key={p.id} className="text-[9px] bg-white text-red-600 px-2 py-1 rounded font-black text-red-600">{p.code}</span>)}</div></div>)}
-        <div className="p-6 space-y-4 flex-1 overflow-y-auto pb-20 text-slate-900"> {orders.filter((o:any)=>o.status==='ready').length === 0 ? <div className="text-center py-20 opacity-30 font-black text-xs uppercase tracking-widest text-slate-900">No active routes available</div> : orders.filter((o:any)=>o.status==='ready').map((o: any) => (<div key={o.id} className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 animate-in slide-in-from-bottom-8 duration-500 text-slate-900"><div className="flex justify-between mb-6 text-slate-900 text-slate-900 text-slate-900"><span className="text-[10px] font-black text-indigo-600 tracking-widest uppercase text-indigo-600 text-indigo-600">#{o.orderCode}</span><span className="bg-slate-100 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter text-slate-600 text-slate-600">{o.status}</span></div><h3 className="text-2xl font-black text-slate-800 mb-2 leading-none text-slate-900">{o.clientName}</h3><p className="text-xs text-slate-500 mb-8 flex items-center gap-2 font-bold uppercase text-slate-400 text-slate-400 text-slate-400"><MapPin className="w-4 h-4 text-emerald-500"/> {o.address}</p><button onClick={()=>claimOrder(o.id)} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all shadow-xl shadow-xl text-white">Accept Route</button></div>))}</div>
-    </div>
-  );
-}
-
-function DriverWorkflow({ order, allPumps, user }: any) {
+function DriverWorkflow({ order, allPumps, user, pharmacyId }: any) {
     const [step, setStep] = useState(order.status==='picked_up'?'delivery':'pickup'); 
     const [s1, setS1] = useState(""); const [s2, setS2] = useState(""); const [dS, setDS] = useState<Record<string,any>>({});
-    const pR = allPumps.filter((p: any) => p.status === 'with_driver' && p.currentDriverId === user.id && p.pharmacyId === order.pharmacyId);
+    const pR = allPumps.filter((p: any) => p.status === 'with_driver' && p.currentDriverId === user.id && p.pharmacyId === pharmacyId);
     const cD = allPumps.filter((p: any) => p.currentClientId === order.clientId && p.status === 'with_client');
     const action = async () => {
         const b = writeBatch(db);
@@ -524,57 +498,63 @@ function DriverWorkflow({ order, allPumps, user }: any) {
         }
     };
     return (
-      <div className="flex-1 flex flex-col bg-white text-slate-900">
+      <div className="flex-1 flex flex-col bg-white text-slate-900 text-slate-900">
         <div className="bg-[#0f172a] p-10 pt-16 rounded-b-4xl text-white shadow-2xl text-white">
           <h2 className="text-3xl font-black italic tracking-tighter text-white">#{order.orderCode}</h2>
-          <p className="text-[10px] font-black text-emerald-400 mt-2 tracking-widest uppercase text-emerald-400">{step.toUpperCase()}</p>
+          <p className="text-[10px] font-black text-emerald-400 mt-2 tracking-widest uppercase">{step.toUpperCase()}</p>
         </div>
-        <div className="flex-1 p-8 space-y-8 overflow-y-auto text-slate-900 text-slate-900">
+        <div className="flex-1 p-8 space-y-8 overflow-y-auto text-slate-900">
           {step === 'pickup' ? (
             <div className="space-y-6 text-slate-900">
               {pR.length > 0 && (
                 <div className="bg-amber-100 p-6 rounded-3xl border-2 border-amber-300 animate-pulse text-amber-700">
-                  <p className="text-xs font-black text-amber-700 mb-3 uppercase flex items-center gap-2"><AlertTriangle/> Return Debt to Office</p>
+                  <p className="text-xs font-black text-amber-700 mb-3 uppercase flex items-center gap-2"><AlertTriangle/> Return Debt to Pharmacy</p>
                   <div className="flex flex-wrap gap-2 text-amber-700">{pR.map((p: any)=>(<div key={p.id} className="bg-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm text-slate-900">S/N: {p.code}</div>))}</div>
                 </div>
               )}
-              <div className="bg-slate-50 p-6 rounded-3xl shadow-inner text-slate-900"><p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">Handover Checklist:</p>{order.pumps.map((p:any)=><p key={p.code} className="font-black text-2xl text-[#0f172a] mb-1 text-slate-900">S/N: {p.code}</p>)}</div>
-              <SignaturePad onSave={setS1} label="Pickup Handover Signature" />
+              <div className="bg-slate-50 p-6 rounded-3xl shadow-inner text-slate-900"><p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">Handover Checklist:</p>{order.pumps.map((p:any)=><p key={p.code} className="font-black text-2xl text-[#0f172a] mb-1">S/N: {p.code}</p>)}</div>
+              <SignaturePad onSave={setS1} label="Office Handover Receipt Signature" />
             </div>
           ) : (
             <div className="space-y-6 text-slate-900">
               <div className="p-8 bg-[#0f172a] rounded-4xl text-white shadow-xl text-white">
                 <h3 className="text-2xl font-black mb-1 leading-tight text-white">{order.clientName}</h3>
-                <p className="text-sm opacity-60 flex items-center gap-2 font-bold text-white/50 text-white/50 text-white/50"><MapPin className="w-4 h-4"/> {order.address}</p>
+                <p className="text-sm opacity-60 flex items-center gap-2 font-bold text-white/50 text-white/50"><MapPin className="w-4 h-4"/> {order.address}</p>
               </div>
               {cD.length > 0 && (
                 <div className="space-y-4">
                   {cD.map((p: any)=>(
                     <div key={p.id} className="p-5 rounded-3xl border-2 flex justify-between items-center bg-white shadow-sm border-slate-100 text-slate-900">
-                      <div><p className="font-black text-lg text-indigo-950 text-indigo-950">#{p.code}</p><p className="text-[10px] text-red-500 font-black uppercase tracking-tighter text-red-500">Collect from patient</p></div>
+                      <div><p className="font-black text-lg text-indigo-950">#{p.code}</p><p className="text-[10px] text-red-500 font-black uppercase tracking-tighter text-red-500">Collect from patient</p></div>
                       <button onClick={()=>setDS({...dS, [p.id]:'collected'})} className={`p-4 rounded-2xl transition-all ${dS[p.id]==='collected'?'bg-emerald-500 text-white scale-110 shadow-lg shadow-emerald-500/30 text-white text-white':'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}><CheckCircle/></button>
                     </div>
                   ))}
                 </div>
               )}
-              <div className="space-y-4 pt-4 text-slate-900 text-slate-900"><SignaturePad onSave={setS1} label="Proof of Delivery Signature" /><SignaturePad onSave={setS2} label="Patient Receipt Signature" /></div>
+              <div className="space-y-4 pt-4 text-slate-900"><SignaturePad onSave={setS1} label="Proof of Delivery Signature" /><SignaturePad onSave={setS2} label="Patient Receipt Signature" /></div>
             </div>
           )}
         </div>
-        <div className="p-6 border-t bg-white text-slate-900"><button onClick={action} disabled={!s1 || (step==='delivery'&&!s2)} className="w-full bg-[#10b981] text-slate-900 py-6 rounded-4xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all shadow-xl text-white">Complete Protocol Step</button></div>
+        <div className="p-6 border-t bg-white text-slate-900"><button onClick={action} disabled={!s1 || (step==='delivery'&&!s2)} className="w-full bg-[#10b981] text-slate-900 py-6 rounded-4xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all shadow-xl text-slate-950">Process Protocol Step</button></div>
       </div>
     );
 }
 
-function SuperAdminView({ onLogout }: any) {
-    const [l, setL] = useState<any[]>([]); const [e, setE] = useState("");
-    useEffect(() => onSnapshot(query(collection(db, 'pharmacyEmployees'), where('role','==','license_code')), s => setL(s.docs.map(d=>({id:d.id,...d.data()}))), (err) => console.error(err)), []);
-    const gen = async () => { if(!e) return; const code=`FARM-${Math.random().toString(36).substring(2,6).toUpperCase()}`; await addDoc(collection(db,'pharmacyEmployees'),{code, role:'license_code', status:'active', assignedEmail:e, createdAt:serverTimestamp()}); setE(""); };
-    return (<div className="min-h-screen bg-[#0f172a] text-white p-8 max-w-md mx-auto flex flex-col text-white text-white"><header className="flex justify-between items-end mb-10 text-white"><div><h2 className="text-3xl font-black italic tracking-tighter uppercase text-white">Master Hub</h2><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest opacity-60 text-white">Global Licenses</p></div><button onClick={onLogout} className="p-4 bg-white/10 rounded-2xl transition-colors hover:bg-white/20 text-white"><LogOut/></button></header><div className="space-y-6 flex-1 overflow-y-auto text-white"><div className="bg-white/5 p-8 rounded-4xl border border-white/10 space-y-4 shadow-2xl text-white text-white text-white text-white"><h3 className="font-bold flex gap-2 text-white text-sm uppercase tracking-widest text-white text-white"><Ticket className="text-emerald-500"/> Create License Key</h3><input className="w-full bg-slate-800 p-4 rounded-2xl outline-none text-sm border border-white/5 font-bold text-white uppercase placeholder-white/20 text-white text-white text-white" placeholder="Client email" value={e} onChange={v=>setE(v.target.value)}/><button onClick={gen} className="w-full bg-emerald-600 text-slate-950 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 shadow-lg shadow-emerald-500/20 text-slate-950 text-slate-950 text-slate-950">Generate Key</button></div><div className="space-y-3">{l.map((x: any)=>(<div key={x.id} className="bg-white/5 p-5 rounded-3xl flex justify-between border border-white/5 items-center text-white text-white"><div><p className="font-black text-emerald-400 tracking-wider text-lg text-emerald-400 text-emerald-400">{x.code}</p><p className="text-[10px] opacity-40 uppercase tracking-widest text-white text-white text-white">{x.assignedEmail}</p></div><span className={`text-[8px] px-3 py-1 rounded-full uppercase font-black ${x.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{x.status}</span></div>))}</div></div></div>);
+function DriverApp({ orders, allPumps, user, onLogout, myCustodyPumps, onOpenManual, allOrders }: any) {
+  const activeOrder = allOrders.find((o: any) => o.claimedBy === user.id && o.status !== 'delivered' && o.status !== 'cancelled');
+  const claimOrder = async (id: string) => { await updateDoc(doc(db, 'deliveries', id), { status: 'claimed', claimedBy: user.id, claimedAt: serverTimestamp() }); };
+  if (activeOrder) return <DriverWorkflow order={activeOrder} allPumps={allPumps} user={user} pharmacyId={activeOrder.pharmacyId} />;
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
+        <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm text-slate-900 text-slate-900"><div><h2 className="text-2xl font-black italic text-[#0f172a] uppercase tracking-tighter">{user.city} Fleet</h2><p className="text-[10px] font-black text-indigo-600 mt-1 uppercase tracking-widest">{user.name}</p></div><div className="flex gap-2"><button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><BookOpen className="w-6 h-6"/></button><button onClick={onLogout} className="p-4 bg-slate-100 rounded-2xl text-slate-900 transition-colors active:bg-slate-200 text-slate-950"><LogOut/></button></div></header>
+        {myCustodyPumps.length > 0 && (<div className="mx-6 mt-4 bg-red-500 p-5 rounded-3xl text-white shadow-lg animate-pulse text-white"><div className="flex items-center gap-2 mb-2 text-white"><AlertTriangle/><span className="font-black text-xs uppercase tracking-widest">HANDOVER REQUIRED</span></div><div className="flex flex-wrap gap-2 text-white">{myCustodyPumps.map((p:any) => <span key={p.id} className="text-[9px] bg-white text-red-600 px-2 py-1 rounded font-black">{p.code}</span>)}</div></div>)}
+        <div className="p-6 space-y-4 flex-1 overflow-y-auto pb-20 text-slate-900 text-slate-900"> {orders.filter((o:any)=>o.status==='ready').length === 0 ? <div className="text-center py-20 opacity-30 font-black text-xs uppercase tracking-widest text-slate-400">No active routes available</div> : orders.filter((o:any)=>o.status==='ready').map((o: any) => (<div key={o.id} className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 animate-in slide-in-from-bottom-8 duration-500 text-slate-900 text-slate-900"><div className="flex justify-between mb-6 text-slate-900"><span className="text-[10px] font-black text-indigo-600 tracking-widest uppercase">#{o.orderCode}</span><span className="bg-slate-100 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter text-slate-600">READY</span></div><h3 className="text-2xl font-black text-slate-800 mb-2 leading-none">{o.clientName}</h3><p className="text-xs text-slate-500 mb-8 flex items-center gap-2 font-bold uppercase text-slate-400"><MapPin className="w-4 h-4 text-emerald-500"/> {o.address}</p><button onClick={()=>claimOrder(o.id)} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all shadow-xl text-white">Accept Dispatch</button></div>))}</div>
+    </div>
+  );
 }
 
 /* ==========================================================================
-   7. ROOT APP COMPONENT
+   8. ROOT APP COMPONENT
    ========================================================================== */
 
 export default function App() {
@@ -633,17 +613,16 @@ export default function App() {
   if (loading) return <LoadingScreen />;
   if (errorMsg) return <ErrorScreen msg={errorMsg} onRetry={manualRetry} />;
 
-  // NAVIGATION HANDLERS
   if (view === 'manual') return <ManualView onBack={() => setView('selection')} />;
 
   if (view === 'selection') return (
     <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white relative overflow-hidden text-center text-white">
         <div className="w-24 h-24 bg-emerald-500 rounded-3xl flex items-center justify-center mb-8 shadow-2xl animate-bounce duration-[3000ms] shadow-emerald-500/20 text-white"><Truck className="w-12 h-12 text-[#0f172a]" /></div>
         <h1 className="text-4xl font-black italic tracking-tighter mb-1 uppercase text-white">Dispatcher Pro</h1>
-        <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-16 text-center text-white opacity-50">Smart Medical Logistics Platform</p>
+        <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-16 text-center text-white/50 opacity-50">Smart Medical Logistics Platform</p>
         <div className="w-full max-w-xs space-y-4 text-white">
             <button onClick={() => setView('login')} className="w-full bg-white text-[#0f172a] py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 shadow-xl transition-all active:scale-95 text-[#0f172a]"><span>Portal Access</span><ArrowRight className="w-5 h-5 text-emerald-600"/></button>
-            <button onClick={() => setView('register')} className="w-full bg-white/5 border border-white/10 py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 hover:bg-white/10 transition-all active:scale-95 text-white"><span>Register Account</span><Plus className="w-5 h-5 text-emerald-400"/></button>
+            <button onClick={() => setView('register')} className="w-full bg-white/5 border border-white/10 py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 hover:bg-white/10 transition-all active:scale-95 text-white"><span>Register Business</span><Plus className="w-5 h-5 text-emerald-400"/></button>
             <button onClick={() => setView('manual')} className="w-full mt-4 flex items-center justify-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors text-indigo-400"><BookOpen className="w-4 h-4"/> Help & Manual</button>
         </div>
         <div className="absolute bottom-10">
@@ -670,38 +649,42 @@ export default function App() {
                   const col = form.role === 'driver' ? 'deliveryDrivers' : 'pharmacyEmployees';
                   const docRef = await addDoc(collection(db, col), { ...form, pin: pinVal, signature: sign || "", createdAt: serverTimestamp() });
                   if (form.role === 'pharmacy_admin') await updateDoc(docRef, { pharmacyId: docRef.id });
+                  
+                  // ENVÍO DE CORREO (Simulación de API para que llegue a Vercel)
+                  await fetch("https://us-central1-delivery-dispatcher-f11cc.cloudfunctions.net/sendEmail", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: form.email, subject: "Dispatcher Pro - Your Access PIN", html: `<h3>Welcome to Dispatcher Pro</h3><p>Your access PIN is: <b>${pinVal}</b></p>` }) }).catch(e => console.warn("Email service not available"));
+                  
                   setNewPin(pinVal);
               } catch (e: any) { alert(e.message); } setLoad(false);
           };
           if (newPin) return (<div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white text-center shadow-inner text-white"><h2 className="text-3xl font-black italic mb-4 uppercase text-white tracking-tighter">Registration Complete</h2><p className="text-sm text-slate-400 mb-2 uppercase tracking-widest text-white">Your Private Access PIN:</p><p className="text-7xl font-black text-emerald-400 mb-10 tracking-tighter text-emerald-400">{newPin}</p><button onClick={onBack} className="w-full bg-white text-[#0f172a] py-5 rounded-4xl font-black uppercase text-xs active:scale-95 transition-all text-[#0f172a]">Login Now</button></div>);
           return (
               <div className="min-h-screen bg-[#0f172a] flex flex-col p-8 text-white overflow-y-auto pb-20 text-white">
-                  <button onClick={onBack} className="self-start p-4 bg-white/5 rounded-2xl mb-8 transition-colors hover:bg-white/10 text-white text-white"><ChevronLeft/></button>
-                  <h2 className="text-3xl font-black italic mb-8 uppercase tracking-tighter">Register Profile</h2>
-                  <div className="grid grid-cols-2 gap-3 mb-8 text-white text-white text-white">
-                      <button onClick={() => setForm({...form, role: 'driver'})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${form.role === 'driver' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-white/10 text-slate-400'}`}>Driver Registration</button>
-                      <button onClick={() => setForm({...form, role: 'pharmacy_admin'})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${form.role === 'pharmacy_admin' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-transparent border-white/10 text-slate-400'}`}>Pharmacy Registration</button>
+                  <button onClick={onBack} className="self-start p-4 bg-white/5 rounded-2xl mb-8 transition-colors hover:bg-white/10 text-white"><ChevronLeft/></button>
+                  <h2 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-white">Register Profile</h2>
+                  <div className="grid grid-cols-2 gap-3 mb-8 text-white text-white">
+                      <button onClick={() => setForm({...form, role: 'driver'})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${form.role === 'driver' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-transparent border-white/10 text-slate-400'}`}>Driver Registration</button>
+                      <button onClick={() => setForm({...form, role: 'pharmacy_admin'})} className={`py-4 rounded-2xl font-black text-[10px] uppercase border transition-all ${form.role === 'pharmacy_admin' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-transparent border-white/10 text-slate-400'}`}>Pharmacy Registration</button>
                   </div>
-                  <div className="space-y-4 text-white text-white">
+                  <div className="space-y-4 text-white">
                       {form.role === 'pharmacy_admin' && (<input className="w-full bg-white/5 p-4 rounded-2xl font-black border border-emerald-500/30 text-emerald-300 outline-none uppercase placeholder-emerald-500/50" placeholder="Activation Key" value={lic} onChange={e=>setLic(e.target.value.toUpperCase())} />)}
-                      <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30 text-white text-white" placeholder="Full Legal Name" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} />
-                      <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30 text-white text-white" placeholder="Business Email" value={form.email} onChange={e=>setForm({...form, email: e.target.value})} />
+                      <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30 text-white" placeholder="Full Legal Name" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} />
+                      <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30 text-white" placeholder="Contact Email" value={form.email} onChange={e=>setForm({...form, email: e.target.value})} />
                       <div className="space-y-1">
                           <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase">Country</label>
                           <select className="w-full bg-white/5 p-4 rounded-2xl border border-white/10 text-sm outline-none text-white text-white" value={form.country} onChange={e=>setForm({...form, country: e.target.value, state: ''})}>{Object.keys(LOCATIONS).map(k=><option key={k} value={k} className="text-black">{LOCATIONS[k].label}</option>)}</select>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-slate-900 text-slate-900 text-slate-900 text-slate-900">
-                          <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-2 text-slate-900 text-slate-900 text-slate-900">
+                          <div className="space-y-1 text-white">
                               <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase text-indigo-400">State/Province</label>
                               <select className="w-full bg-white/5 p-4 rounded-2xl border border-white/10 text-sm outline-none text-white text-white" value={form.state} onChange={e=>setForm({...form, state: e.target.value})}><option value="" className="text-black">Select...</option>{LOCATIONS[form.country]?.states.map((s: any)=><option key={s} value={s} className="text-black text-black">{s}</option>)}</select>
                           </div>
                           <div className="space-y-1 text-white">
-                              <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase text-indigo-400">City</label>
+                              <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase text-indigo-400 text-indigo-400">City</label>
                               <input className="bg-white/5 p-4 h-[54px] w-full rounded-2xl border border-white/10 font-bold outline-none text-sm text-white placeholder-white/30 text-white" placeholder="Home City" value={form.city} onChange={e=>setForm({...form, city: e.target.value})} />
                           </div>
                       </div>
-                      {form.role === 'driver' && <SignaturePad onSave={setSign} label="Security Validation Handshake" />}
-                      <button onClick={register} disabled={load || (form.role==='driver' && !sign)} className="w-full bg-emerald-600 py-6 rounded-4xl font-black uppercase text-sm mt-4 shadow-xl active:scale-95 transition-all disabled:opacity-50 text-slate-950 shadow-emerald-500/30 text-slate-900">{load ? "Validating..." : "Confirm Business Activation"}</button>
+                      {form.role === 'driver' && <SignaturePad onSave={setSign} label="Security Handover Validation Signature" />}
+                      <button onClick={register} disabled={load || (form.role==='driver' && !sign)} className="w-full bg-emerald-600 py-6 rounded-4xl font-black uppercase text-sm mt-4 shadow-xl active:scale-95 transition-all disabled:opacity-50 text-slate-950 shadow-emerald-500/30 text-slate-900">{load ? "Validating..." : "Confirm Activation"}</button>
                   </div>
               </div>
           );
