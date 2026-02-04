@@ -495,14 +495,40 @@ function DriverWorkflow({ order, allPumps, user, pharmacyId }: any) {
             b.update(doc(db, 'deliveries', order.id), { status: 'picked_up', signatureDriverPickup: s1 });
             order.pumps.forEach((p: any) => b.update(doc(db, 'pumps', p.pumpId), { status: 'with_driver', currentDriverId: user.id }));
             await b.commit(); setStep('delivery'); setS1("");
-        } else {
-            const retIds = cD.filter((d: Pump) => dS[d.id]==='collected').map((d: Pump) => d.id);
-            b.update(doc(db, 'deliveries', order.id), { status: 'delivered', signatureDriverDelivery: s1, signatureClient: s2, returnedPumpIds: retIds });
-            order.pumps.forEach((p: any) => b.update(doc(db, 'pumps', p.pumpId), { status: 'with_client', currentClientId: order.clientId, currentDriverId: null, deliveredBy: user.name }));
-            retIds.forEach((id: string) => b.update(doc(db, 'pumps', id), { status: 'with_driver', currentClientId: null, currentDriverId: user.id }));
-            await b.commit(); setS1(""); setS2("");
+                } else {
+            const retIds: string[] = cD
+                .filter((d: Pump) => dS[d.id] === 'collected')
+                .map((d: Pump) => d.id);
+
+            b.update(doc(db, 'deliveries', order.id), {
+                status: 'delivered',
+                signatureDriverDelivery: s1,
+                signatureClient: s2,
+                returnedPumpIds: retIds,
+            });
+
+            order.pumps.forEach((p: any) =>
+                b.update(doc(db, 'pumps', p.pumpId), {
+                    status: 'with_client',
+                    currentClientId: order.clientId,
+                    currentDriverId: null,
+                    deliveredBy: user.name,
+                })
+            );
+
+            retIds.forEach((id: string) =>
+                b.update(doc(db, 'pumps', id), {
+                    status: 'with_driver',
+                    currentClientId: null,
+                    currentDriverId: user.id,
+                })
+            );
+
+            await b.commit();
+            setS1("");
+            setS2("");
         }
-    };
+};
     return (
       <div className="flex-1 flex flex-col bg-white text-slate-900 text-slate-900 text-slate-900 text-slate-900 text-slate-900">
         <div className="bg-[#0f172a] p-10 pt-16 rounded-b-4xl text-white shadow-2xl text-white text-white">
