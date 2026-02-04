@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 /* ==========================================================================
-   1. FIREBASE CONFIGURATION
+   1. CONFIGURACIÓN FIREBASE
    ========================================================================== */
 const firebaseConfig = {
   apiKey: "AIzaSyAUlLbEm5swojdlsFc-FSZaA212hJCQv3I",
@@ -57,7 +57,7 @@ const LOCATIONS: Record<string, { label: string, states: string[] }> = {
    ========================================================================== */
 interface Pump { id: string; code: string; brand?: string; model?: string; status: 'available' | 'with_client' | 'maintenance' | 'with_driver'; currentClientId?: string | null; currentDriverId?: string | null; pharmacyId: string; deliveredBy?: string; }
 interface Client { id: string; name: string; email: string; address: string; city: string; state?: string; country?: string; pharmacyId: string; }
-interface Order { id: string; orderCode: string; clientName: string; clientEmail: string; clientId: string; address: string; city: string; status: "ready" | "claimed" | "picked_up" | "delivered" | "cancelled"; pumps: { pumpId: string; code: string }[]; pharmacyId: string; createdAt: any; claimedBy?: string; state?: string; country?: string; }
+interface Order { id: string; orderCode: string; clientName: string; clientEmail: string; clientId: string; address: string; city: string; status: "ready" | "claimed" | "picked_up" | "delivered" | "cancelled"; pumps: { pumpId: string; code: string }[]; pharmacyId: string; createdAt: any; claimedBy?: string; state?: string; country?: string; signatureClient?: string; returnedPumpIds?: string[]; }
 interface Employee { id: string; name: string; pin: string; role: 'driver' | 'pharmacy_admin' | 'pharmacy_staff'; email: string; city?: string; state?: string; country?: string; pharmacyId?: string; signature?: string; }
 
 /* ==========================================================================
@@ -68,7 +68,7 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-8 text-center">
       <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
-      <p className="font-black uppercase text-[10px] tracking-[0.3em] opacity-30">Starting Dispatcher Pro...</p>
+      <p className="font-black uppercase text-[10px] tracking-[0.3em] opacity-30 text-white">Initializing Dispatcher Pro...</p>
     </div>
   ); 
 }
@@ -77,9 +77,9 @@ function ErrorScreen({ msg, onRetry }: { msg: string, onRetry: () => void }) {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-8 text-center">
         <XCircle className="w-16 h-16 text-red-500 mb-4 mx-auto" />
-        <h2 className="text-xl font-bold mb-2 uppercase italic tracking-tighter">System Error</h2>
-        <p className="text-slate-400 text-xs mb-8 max-w-xs mx-auto opacity-60">{msg}</p>
-        <button onClick={onRetry} className="bg-emerald-500 text-slate-900 px-8 py-4 rounded-3xl font-black uppercase text-xs flex items-center gap-2 active:scale-95 transition-all mx-auto shadow-lg">
+        <h2 className="text-xl font-bold mb-2 uppercase italic text-white">System Error</h2>
+        <p className="text-slate-400 text-xs mb-8 max-w-xs mx-auto text-white">{msg}</p>
+        <button onClick={onRetry} className="bg-emerald-500 text-slate-900 px-8 py-4 rounded-3xl font-black uppercase text-xs flex items-center gap-2 active:scale-95 transition-all mx-auto shadow-lg shadow-emerald-500/20">
           <RefreshCw className="w-4 h-4" /> Reconnect Now
         </button>
     </div>
@@ -123,11 +123,11 @@ function SignaturePad({ onSave, label }: { onSave: (data: string) => void, label
     <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 shadow-sm text-slate-900">
         <div className="flex justify-between items-center mb-1 text-slate-400">
             <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1"><PenTool className="w-3 h-3"/> {label}</label>
-            <button onClick={() => { const c = canvasRef.current; const ctx = c?.getContext('2d'); ctx?.clearRect(0,0,c!.width,c!.height); setHasSignature(false); onSave(""); }} type="button" className="text-red-400 p-1 hover:bg-red-50 rounded-full transition-colors"><Eraser className="w-4 h-4"/></button>
+            <button onClick={() => { const c = canvasRef.current; const ctx = c?.getContext('2d'); ctx?.clearRect(0,0,c!.width,c!.height); setHasSignature(false); onSave(""); }} type="button" className="text-red-400 p-1 hover:bg-red-50 rounded-full transition-colors text-red-400"><Eraser className="w-4 h-4"/></button>
         </div>
         <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 overflow-hidden touch-none relative h-32">
             <canvas ref={canvasRef} width={400} height={200} className="w-full h-full block cursor-crosshair" onMouseDown={startDrawing} onTouchStart={startDrawing} />
-            {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-[10px] font-black uppercase text-center">Sign here</div>}
+            {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-[10px] font-black uppercase text-center text-slate-300">Sign Here</div>}
         </div>
     </div>
   );
@@ -135,26 +135,17 @@ function SignaturePad({ onSave, label }: { onSave: (data: string) => void, label
 
 function SearchableSelect({ label, options, value, onChange, placeholder }: any) {
   const [isOpen, setIsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  useEffect(() => { if (!value) setSearchQuery(""); }, [value]);
-  const filtered = options.filter((o: any) => (o.label || "").toLowerCase().includes(searchQuery.toLowerCase()));
+  const [term, setTerm] = useState("");
+  useEffect(() => { if (!value) setTerm(""); }, [value]);
+  const filtered = options.filter((o: any) => (o.label || "").toLowerCase().includes(term.toLowerCase()));
   return (
     <div className="space-y-2 relative text-slate-900">
       <label className="text-[10px] font-black text-indigo-500 uppercase ml-2">{label}</label>
       <div className="relative">
-        <input className="w-full p-4 rounded-2xl border-2 border-slate-200 font-bold bg-white outline-none focus:border-indigo-500 text-slate-700 uppercase text-xs" placeholder={value ? options.find((o: any) => o.value === value)?.label : placeholder} value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsOpen(true); }} onFocus={() => setIsOpen(true)} />
+        <input className="w-full p-4 rounded-2xl border-2 border-slate-200 font-bold bg-white outline-none focus:border-indigo-500 text-slate-700 uppercase text-xs shadow-sm" placeholder={value ? options.find((o: any) => o.value === value)?.label : placeholder} value={term} onChange={(e) => { setTerm(e.target.value); setIsOpen(true); }} onFocus={() => setIsOpen(true)} />
         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"><Search className="w-5 h-5" /></div>
         {isOpen && (
-          <><div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div><div className="absolute top-full left-0 w-full bg-white mt-2 rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto z-20 text-slate-900 text-left">{filtered.length === 0 ? (
-                <div className="p-4 text-xs font-bold text-slate-400 text-center">No results found</div>
-              ) : (
-                filtered.map((opt: any) => (
-                  <div key={opt.value} className="p-4 border-b border-slate-50 hover:bg-indigo-50 cursor-pointer transition-colors text-left" onClick={() => { onChange(opt.value); setSearchQuery(""); setIsOpen(false); }}>
-                    <p className="font-bold text-sm text-slate-800">{opt.label}</p>
-                    {opt.sub && <p className="text-[9px] text-slate-400 font-black uppercase">{opt.sub}</p>}
-                  </div>
-                ))
-              )}</div></>
+          <><div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div><div className="absolute top-full left-0 w-full bg-white mt-2 rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto z-20">{filtered.length === 0 ? (<div className="p-4 text-xs font-bold text-slate-400">No results found</div>) : (filtered.map((opt: any) => (<div key={opt.value} className="p-4 border-b border-slate-50 hover:bg-indigo-50 cursor-pointer transition-colors text-left text-slate-900" onClick={() => { onChange(opt.value); setTerm(""); setIsOpen(false); }}><p className="font-bold text-sm text-slate-800">{opt.label}</p>{opt.sub && <p className="text-[9px] text-slate-400 font-black uppercase">{opt.sub}</p>}</div>)))}</div></>
         )}
       </div>
     </div>
@@ -176,89 +167,80 @@ function MenuCard({ icon, label, color, onClick, full, badge }: any) {
 }
 
 /* ==========================================================================
-   4. MANUAL VIEW
+   4. MANAGEMENT COMPONENTS
    ========================================================================== */
 
-function ManualView({ onBack }: { onBack: () => void }) {
-  const steps = [
-    { title: "Activation", content: "Pharmacy admins must register with a License Key. Once created, they receive a PIN. Employees can register themselves using the pharmacy's name and admin's PIN.", icon: <Key className="w-5 h-5"/> },
-    { title: "Inventory", content: "Load equipment using Serial Numbers (S/N). The system tracks real-time status: Available, With Client, or With Driver.", icon: <Database className="w-5 h-5"/> },
-    { title: "Notificaciones", content: "Look for numeric badges (red numbers) on your dashboard. They indicate pending dispatches or equipment that needs to be received from drivers.", icon: <Bell className="w-5 h-5"/> },
-    { title: "Chain of Custody", content: "Dual digital signatures are mandatory for every custody transfer to ensure a legal record of responsibility.", icon: <ShieldCheck className="w-5 h-5"/> }
-  ];
+function SuperAdminView({ onLogout, employees, drivers }: any) {
+    const [licenses, setLicenses] = useState<any[]>([]); const [email, setEmail] = useState("");
+    useEffect(() => onSnapshot(query(collection(db, 'pharmacyEmployees'), where('role','==','license_code')), s => setLicenses(s.docs.map(d=>({id:d.id,...d.data()})))), []);
+    const gen = async () => { if(!email) return; const code=`FARM-${Math.random().toString(36).substring(2,6).toUpperCase()}`; await addDoc(collection(db,'pharmacyEmployees'),{code, role:'license_code', status:'active', assignedEmail:email, createdAt:serverTimestamp()}); setEmail(""); };
+    return (<div className="min-h-screen bg-[#0f172a] text-white p-8 max-w-md mx-auto flex flex-col text-white"><header className="flex justify-between items-end mb-10"><div><h2 className="text-3xl font-black italic tracking-tighter uppercase text-white">Master Hub</h2><p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest opacity-60">Global Licenses</p></div><button onClick={onLogout} className="p-4 bg-white/10 rounded-2xl transition-colors hover:bg-white/20 text-white"><LogOut/></button></header><div className="space-y-6 flex-1 overflow-y-auto"><div className="bg-white/5 p-8 rounded-4xl border border-white/10 space-y-4 shadow-2xl text-white"><h3 className="font-bold flex gap-2 text-white text-sm uppercase tracking-widest"><Ticket className="text-emerald-500 text-emerald-500"/> Create License Key</h3><input className="w-full bg-slate-800 p-4 rounded-2xl outline-none text-sm border border-white/5 font-bold text-white uppercase placeholder-white/20" placeholder="Client email" value={email} onChange={v=>setEmail(v.target.value)}/><button onClick={gen} className="w-full bg-emerald-600 text-slate-950 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 shadow-lg shadow-emerald-500/20 text-slate-950">Generate Key</button></div><div className="space-y-3 text-white">{licenses.map((x: any)=>(<div key={x.id} className="bg-white/5 p-5 rounded-3xl flex justify-between border border-white/5 items-center text-white"><div><p className="font-black text-emerald-400 tracking-wider text-lg text-emerald-400">{x.code}</p><p className="text-[10px] opacity-40 uppercase tracking-widest text-white">{x.assignedEmail}</p></div><span className={`text-[8px] px-3 py-1 rounded-full uppercase font-black ${x.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{x.status}</span></div>))}</div></div></div>);
+}
+
+function StaffManager({ staff }: { staff: Employee[] }) {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 animate-in fade-in">
-        <header className="p-6 bg-[#0f172a] text-white flex justify-between items-center shadow-lg">
-            <div className="flex items-center gap-3 text-white">
-                <div className="bg-emerald-500 p-2 rounded-xl shadow-lg"><BookOpen className="w-6 h-6 text-slate-950"/></div>
-                <h2 className="text-xl font-black italic uppercase tracking-tighter">Support & Manual</h2>
+    <div className="space-y-6 animate-in fade-in text-slate-900"> 
+      <div className="space-y-2">
+        <p className="text-[10px] font-black text-slate-400 uppercase ml-2 text-slate-400">Registered Staff</p>
+        {staff.length === 0 ? (
+          <p className="text-center text-xs text-slate-300 py-10">No staff found.</p>
+        ) : (
+          staff.map((s: Employee) => (
+            <div key={s.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex justify-between shadow-sm">
+              <span className="font-bold text-xs text-slate-800">{s.name}</span>
+              <span className="text-[10px] text-emerald-500 font-black uppercase">Verified</span>
             </div>
-            <button onClick={onBack} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all text-white"><X className="w-6 h-6 text-white"/></button>
-        </header>
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
-            {steps.map((s, i) => (
-                <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center gap-3 mb-3 text-indigo-600 font-black uppercase text-sm">
-                        {s.icon} {s.title}
-                    </div>
-                    <p className="text-xs text-slate-600 leading-relaxed font-medium">{s.content}</p>
+          ))
+        )}
+      </div>
+      <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 text-indigo-700">
+          <p className="text-xs font-bold leading-relaxed italic">Tip: Employees can register themselves using 'Staff Registration' in the setup menu using your pharmacy name and your admin PIN.</p>
+      </div>
+    </div>
+  );
+}
+
+function HistoryLogView({ orders, onBack }: any) {
+  const hist = (orders || []).filter((o: Order) => o.status === 'delivered' || o.status === 'cancelled').sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
+        <div className="p-6 flex justify-between items-center bg-white border-b sticky top-0 z-20 text-slate-900">
+            <h2 className="text-xl font-black italic uppercase">History Log</h2>
+            <button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 text-slate-900">
+            {hist.length === 0 ? <p className="text-center py-20 opacity-30 uppercase text-xs font-black">History empty</p> : hist.map((o: Order) => (
+                <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 animate-in">
+                    <div className="flex justify-between items-start mb-2"><span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest text-indigo-600">#{o.orderCode}</span><span className={`text-[8px] px-2 py-1 rounded font-black uppercase ${o.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>{o.status}</span></div>
+                    <h4 className="font-bold text-slate-800">{o.clientName}</h4>
+                    <p className="text-[10px] text-slate-400 mb-3 uppercase">{o.address}</p>
+                    {o.signatureClient && (<div className="mt-2 border-t border-slate-100 pt-2 text-center text-slate-900"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Receiver Signature</p><img src={o.signatureClient} alt="Sig" className="h-8 mx-auto object-contain opacity-60" /></div>)}
                 </div>
             ))}
-        </div>
-        <div className="p-6 fixed bottom-0 left-0 w-full bg-slate-50/80 backdrop-blur-md">
-            <button onClick={onBack} className="w-full bg-[#0f172a] text-white py-5 rounded-3xl font-black uppercase text-xs active:scale-95 text-white">Return to Menu</button>
         </div>
     </div>
   );
 }
 
 /* ==========================================================================
-   5. DASHBOARDS & LOGIC
+   5. OPERATIONAL VIEWS
    ========================================================================== */
-
-function HistoryLogView({ orders, onBack }: any) {
-  const hist = (orders || []).filter((o: any) => o.status === 'delivered' || o.status === 'cancelled').sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
-        <div className="p-6 flex justify-between items-center bg-white border-b sticky top-0 z-20 text-slate-900"><h2 className="text-xl font-black italic uppercase text-slate-900">History Log</h2><button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 text-slate-900">
-            {hist.length === 0 ? <p className="text-center py-20 opacity-30 uppercase text-xs font-black">History empty</p> : hist.map((o: any) => (
-                <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 animate-in text-slate-900"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest text-indigo-600">#{o.orderCode}</span><span className={`text-[8px] px-2 py-1 rounded font-black uppercase ${o.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>{o.status}</span></div><h4 className="font-bold text-slate-800">{o.clientName}</h4><p className="text-[10px] text-slate-400 mb-3 uppercase text-slate-400">{o.address}</p>{o.signatureClient && (<div className="mt-2 border-t border-slate-100 pt-2 text-center text-slate-900"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Receiver Signature</p><img src={o.signatureClient} alt="Sig" className="h-8 mx-auto object-contain opacity-60" /></div>)}</div>
-            ))}
-        </div>
-    </div>
-  );
-}
-
-function ListPumps({ pumps, readOnly }: { pumps: Pump[], readOnly?: boolean }) {
-  const remove = async(id: string) => { if(confirm("Permanently delete equipment?")) await deleteDoc(doc(db,'pumps',id)); };
-  return (
-    <div className="space-y-3 pb-20 animate-in fade-in">
-        {pumps.map((p: Pump) => (
-          <div key={p.id} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm mb-3">
-            <div><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">S/N: {p.code}</p><p className="font-bold text-slate-800">{p.brand || 'No Brand'}</p><span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-lg mt-1 inline-block ${p.status === 'with_driver' ? 'bg-blue-100 text-blue-600' : p.status === 'with_client' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>{p.status.replace('_', ' ')}</span></div>
-            {!readOnly && <button onClick={() => remove(p.id)} className="text-slate-300 p-2 transition-colors hover:text-red-500"><Trash2 className="w-4 h-4"/></button>}
-          </div>
-        ))}
-    </div>
-  );
-}
 
 function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, pharmacyId, allPumps, drivers, onOpenManual }: any) {
   const [section, setSection] = useState<'menu'|'add_pump'|'list_pumps'|'add_client'|'list_clients'|'create_delivery'|'staff'|'history'|'receive_returns'>('menu');
-  const pendingDispatchCount = orders.filter((o: Order) => o.status === 'ready').length;
-  const pendingReturnsFromDrivers = allPumps.filter((p: Pump) => p.status === 'with_driver' && p.pharmacyId === pharmacyId).length;
+  const pendingDispatch = orders.filter((o: Order) => o.status === 'ready').length;
+  const pendingReturns = allPumps.filter((p: Pump) => p.status === 'with_driver' && p.pharmacyId === pharmacyId).length;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative text-slate-900">
         <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm">
           <div><h2 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">{user.city || 'Office'}</h2><p className="text-[10px] font-black text-emerald-600 mt-1 uppercase tracking-widest">{user.role.replace('_', ' ')}</p></div>
           <div className="flex gap-2">
-            <button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><BookOpen className="w-6 h-6"/></button>
-            {section!=='menu'?<button onClick={()=>setSection('menu')} className="p-4 bg-slate-100 rounded-2xl"><ChevronLeft className="text-slate-900"/></button>:<button onClick={onLogout} className="p-4 bg-red-50 text-red-500 rounded-2xl"><LogOut/></button>}
+            <button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl transition-colors hover:bg-indigo-100"><BookOpen className="w-6 h-6"/></button>
+            {section!=='menu'?<button onClick={()=>setSection('menu')} className="p-4 bg-slate-100 rounded-2xl transition-colors hover:bg-slate-200 text-slate-900"><ChevronLeft/></button>:<button onClick={onLogout} className="p-4 bg-red-50 text-red-500 rounded-2xl transition-all shadow-sm"><LogOut/></button>}
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-6 pb-24">
+        <div className="flex-1 overflow-y-auto p-6 pb-24 text-slate-900">
             {section==='menu' && (
               <div className="grid grid-cols-2 gap-4 animate-in fade-in">
                 <MenuCard icon={<Plus/>} label="New Asset" color="bg-indigo-600" onClick={()=>setSection('add_pump')}/>
@@ -266,46 +248,83 @@ function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, phar
                 <MenuCard icon={<UserPlus/>} label="New Patient" color="bg-emerald-600" onClick={()=>setSection('add_client')}/>
                 <MenuCard icon={<Users/>} label="Patients" color="bg-slate-800" onClick={()=>setSection('list_clients')}/>
                 <MenuCard icon={<ShieldCheck/>} label="Staff List" color="bg-amber-500" onClick={()=>setSection('staff')}/>
-                <MenuCard icon={<Truck/>} label="Dispatch" color="bg-indigo-500" onClick={()=>setSection('create_delivery')} badge={pendingDispatchCount}/>
-                <MenuCard icon={<RotateCcw/>} label="RECEIVE RETURNS" color="bg-blue-600" onClick={()=>setSection('receive_returns')} full badge={pendingReturnsFromDrivers}/>
+                <MenuCard icon={<Truck/>} label="Dispatch" color="bg-indigo-50" onClick={()=>setSection('create_delivery')} badge={pendingDispatch}/>
+                <MenuCard icon={<RotateCcw/>} label="RECEIVE RETURNS" color="bg-blue-600" onClick={()=>setSection('receive_returns')} full badge={pendingReturns}/>
                 <MenuCard icon={<FileClock/>} label="Full History" color="bg-slate-500" onClick={()=>setSection('history')} full />
               </div>
             )}
-            {section==='add_pump' && <AddPumpForm onFinish={()=>setSection('menu')} pharmacyId={pharmacyId}/>}
-            {section==='list_pumps' && <ListPumps pumps={pumps} readOnly={user.role==='pharmacy_staff'}/>}
+            {section==='add_pump' && <AddAssetForm onFinish={()=>setSection('menu')} pharmacyId={pharmacyId}/>}
+            {section==='list_pumps' && <ListAssets pumps={pumps} readOnly={user.role==='pharmacy_staff'}/>}
             {section==='add_client' && <AddClientForm onFinish={()=>setSection('menu')} pharmacyId={pharmacyId} user={user}/>}
             {section==='list_clients' && <ListClients clients={clients} readOnly={user.role==='pharmacy_staff'}/>}
-            {section==='staff' && <StaffManager staff={staff} pharmacyId={pharmacyId}/>}
-            {section==='create_delivery' && <CreateDeliveryForm clients={clients} pumps={pumps} onFinish={()=>setSection('menu')} user={user} pharmacyId={pharmacyId}/>}
+            {section==='staff' && <StaffManager staff={staff} />}
+            {section==='create_delivery' && <CreateDispatchForm clients={clients} pumps={pumps} onFinish={()=>setSection('menu')} user={user} pharmacyId={pharmacyId}/>}
             {section==='history' && <HistoryLogView orders={orders} onBack={()=>setSection('menu')} />}
-            {section==='receive_returns' && <ReturnPumpsForm drivers={drivers} pumps={allPumps} onFinish={()=>setSection('menu')} pharmacyId={pharmacyId}/>}
+            {section==='receive_returns' && <ReturnProcessForm drivers={drivers} pumps={allPumps} onFinish={()=>setSection('menu')} pharmacyId={pharmacyId}/>}
         </div>
     </div>
   );
 }
 
-function AddPumpForm({ onFinish, pharmacyId }: any) {
-  const [f, setF] = useState({ code: '', brand: '', model: '' }); const [msg, setMsg] = useState("");
-  const save = async () => { if (!f.code) return; const dateStr = new Date().toLocaleDateString('en-US'); await addDoc(collection(db, 'pumps'), { ...f, status: 'available', lastReview: dateStr, pharmacyId }); setMsg(`S/N ${f.code} saved`); setF({ code: '', brand: '', model: '' }); setTimeout(() => setMsg(""), 3000); };
+/* ==========================================================================
+   6. OPERATIONAL FORMS (FIXED setForm ERROR)
+   ========================================================================== */
+
+function AddAssetForm({ onFinish, pharmacyId }: any) {
+  const [form, setForm] = useState({ code: '', brand: '', model: '' }); const [msg, setMsg] = useState("");
+  const save = async () => { if (!form.code) return; await addDoc(collection(db, 'pumps'), { ...form, status: 'available', lastReview: new Date().toLocaleString(), pharmacyId }); setMsg(`S/N ${form.code} saved`); setForm({ code: '', brand: '', model: '' }); setTimeout(() => setMsg(""), 3000); };
   return (
-    <div className="space-y-6 animate-in slide-in-from-right-4">
-      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">New Asset</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
+    <div className="space-y-6 animate-in slide-in-from-right-4 text-slate-900">
+      <div className="flex justify-between items-center"><h3 className="font-black text-xl italic uppercase text-slate-900">New Equipment</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
       {msg && <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl text-center font-bold text-xs">{msg}</div>}
-      <div className="space-y-4 bg-white p-6 rounded-4xl border border-slate-100 shadow-sm text-slate-900"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold focus:border-indigo-500" placeholder="Serial Number (S/N)" value={f.code} onChange={e=>setF({...f, code: e.target.value})} /><div className="grid grid-cols-2 gap-2"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm" placeholder="Brand" value={f.brand} onChange={e=>setF({...f, brand: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm" placeholder="Model" value={f.model} onChange={e=>setF({...f, model: e.target.value})} /></div></div>
-      <button onClick={save} className="w-full bg-[#0f172a] text-white py-5 rounded-4xl font-black uppercase text-xs active:scale-95 text-white shadow-indigo-500/20">Save Asset</button>
+      <div className="space-y-4 bg-white p-6 rounded-4xl border border-slate-100 shadow-sm text-slate-900">
+        <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold focus:border-indigo-500 text-slate-900" placeholder="Serial Number (S/N)" value={form.code} onChange={e=>setForm({...form, code: e.target.value})} />
+        <div className="grid grid-cols-2 gap-2 text-slate-900">
+          <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm text-slate-900" placeholder="Brand Name" value={form.brand} onChange={e=>setForm({...form, brand: e.target.value})} />
+          <input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm text-slate-900" placeholder="Model" value={form.model} onChange={e=>setForm({...form, model: e.target.value})} />
+        </div>
+      </div>
+      <button onClick={save} className="w-full bg-[#0f172a] text-white py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white">Register Asset</button>
+    </div>
+  );
+}
+
+function ListAssets({ pumps, readOnly }: { pumps: Pump[], readOnly?: boolean }) {
+  const remove = async(id: string) => { if(confirm("Permanently delete equipment?")) await deleteDoc(doc(db,'pumps',id)); };
+  return (
+    <div className="space-y-3 pb-20 animate-in fade-in text-slate-900">
+        {pumps.map((p: Pump) => (
+          <div key={p.id} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm mb-3">
+            <div>
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest text-indigo-600">S/N: {p.code}</p>
+              <p className="font-bold text-slate-800">{p.brand || 'No Brand'}</p>
+              <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-lg mt-1 inline-block ${p.status === 'with_driver' ? 'bg-blue-100 text-blue-600' : p.status === 'with_client' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>{p.status.replace('_', ' ')}</span>
+            </div>
+            {!readOnly && <button onClick={() => remove(p.id)} className="text-slate-300 p-2 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>}
+          </div>
+        ))}
     </div>
   );
 }
 
 function AddClientForm({ onFinish, pharmacyId, user }: any) {
-  const [f, setF] = useState({ name: '', email: '', address: '', city: '', state: '' }); const [msg, setMsg] = useState("");
-  const save = async () => { if (!f.name) return; await addDoc(collection(db, 'clients'), { ...f, pharmacyId, country: user.country || 'EC' }); setMsg(`Patient ${f.name} saved`); setF({ name: '', email: '', address: '', city: '', state: '' }); setTimeout(() => setMsg(""), 3000); };
+  const [form, setForm] = useState({ name: '', email: '', address: '', city: '', state: '' }); 
+  const [msg, setMsg] = useState("");
+  const save = async () => { if (!form.name) return; await addDoc(collection(db, 'clients'), { ...form, pharmacyId, country: user.country || 'EC' }); setMsg(`Patient ${form.name} saved`); setForm({ name: '', email: '', address: '', city: '', state: '' }); setTimeout(() => setMsg(""), 3000); };
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 text-slate-900">
-      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase tracking-tighter text-slate-900">New Patient</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
+      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase tracking-tighter text-slate-900">New Patient</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
       {msg && <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl text-center font-bold text-xs">{msg}</div>}
-      <div className="bg-white p-6 rounded-4xl border border-slate-100 space-y-4 shadow-sm text-slate-900"><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Full Legal Name" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Patient Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><div className="grid grid-cols-2 gap-2"><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Home Address" value={f.address} onChange={e=>setF({...f, address: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="City" value={f.city} onChange={e=>setF({...f, city: e.target.value})} /></div></div>
-      <button onClick={save} className="w-full bg-emerald-600 text-slate-900 py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 text-white">Register Profile</button>
+      <div className="bg-white p-6 rounded-4xl border border-slate-100 space-y-4 shadow-sm text-slate-900">
+        {/* CORREGIDO: SE CAMBIÓ setForm POR EL SETTER CORRECTO */}
+        <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="Full Legal Name" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} />
+        <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="Patient Email" value={form.email} onChange={e=>setForm({...form, email: e.target.value})} />
+        <div className="grid grid-cols-2 gap-2 text-slate-900">
+          <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="Street Address" value={form.address} onChange={e=>setForm({...form, address: e.target.value})} />
+          <input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" placeholder="City" value={form.city} onChange={e=>setForm({...form, city: e.target.value})} />
+        </div>
+      </div>
+      <button onClick={save} className="w-full bg-emerald-600 text-slate-900 py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white shadow-emerald-500/20">Register Profile</button>
     </div>
   );
 }
@@ -313,54 +332,40 @@ function AddClientForm({ onFinish, pharmacyId, user }: any) {
 function ListClients({ clients, readOnly }: { clients: Client[], readOnly?: boolean }) {
   const del = async (id: string) => { if(confirm("Delete patient profile?")) { await deleteDoc(doc(db, 'clients', id)); } };
   return (
-    <div className="space-y-4 pb-20 animate-in fade-in">
+    <div className="space-y-4 pb-20 animate-in fade-in text-slate-900 text-slate-900">
         {clients.map((c: Client) => (
           <div key={c.id} className="bg-white p-6 rounded-3xl border flex flex-col gap-1 shadow-sm relative border-slate-100 text-slate-900">
-            {!readOnly && <button onClick={() => del(c.id)} className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
-            <h4 className="font-black text-slate-800 text-lg">{c.name}</h4><p className="text-xs text-slate-400 flex items-center gap-1"><Mail className="w-3 h-3" /> {c.email}</p><p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.address}, {c.city}</p>
+            {!readOnly && <button onClick={() => del(c.id)} className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors text-slate-300"><Trash2 className="w-4 h-4" /></button>}
+            <h4 className="font-black text-slate-800 text-lg">{c.name}</h4><p className="text-xs text-slate-400 flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3" /> {c.email}</p><p className="text-xs text-slate-400 flex items-center gap-1 text-slate-400"><MapPin className="w-3 h-3" /> {c.address}, {c.city}</p>
           </div>
         ))}
     </div>
   );
 }
 
-function StaffManager({ staff, pharmacyId }: any) {
-  const [f, setF] = useState({ name: '', email: '' }); const [p, setP] = useState(""); const [s, setS] = useState("");
-  const create = async () => { if (!f.name || !s) return; const pinVal = Math.floor(1000 + Math.random()*9000).toString(); await addDoc(collection(db, 'pharmacyEmployees'), { ...f, pin: pinVal, role: 'pharmacy_staff', pharmacyId, signature: s }); setP(pinVal); };
-  return (
-    <div className="space-y-6 animate-in fade-in text-slate-900"> 
-      {p ? (
-        <div className="bg-emerald-500 text-white p-8 rounded-4xl text-center shadow-lg"><p className="font-bold mb-2 uppercase tracking-widest text-white">STAFF ACCESS PIN:</p><p className="text-6xl font-black text-white">{p}</p><button onClick={()=>setP("")} className="mt-6 text-xs underline text-white">Register another member</button></div>
-      ) : (
-        <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-4 text-slate-900"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold" placeholder="Full Staff Name" onChange={e=>setF({...f, name: e.target.value})} /><SignaturePad onSave={setS} label="Employee Signature" /><button onClick={create} disabled={!s} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs disabled:opacity-50 text-white shadow-slate-900/10">Generate Access PIN</button></div>
-      )}
-      <div className="space-y-2"><p className="text-[10px] font-black text-slate-400 uppercase ml-2">Registered Staff</p>{staff.map((s: any) => (<div key={s.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex justify-between"><span className="font-bold text-xs">{s.name}</span><span className="text-[10px] text-slate-400">PIN: ****</span></div>))}</div>
-    </div>
-  );
-}
-
-function CreateDeliveryForm({ clients, pumps, onFinish, user, pharmacyId }: any) {
+function CreateDispatchForm({ clients, pumps, onFinish, user, pharmacyId }: any) {
   const [cId, setCId] = useState(''); const [sP, setSP] = useState<Pump[]>([]); const [debts, setDebts] = useState<Pump[]>([]);
   useEffect(() => { if (!cId) { setDebts([]); return; } setDebts(pumps.filter((p: Pump) => p.currentClientId === cId && p.status === 'with_client')); }, [cId, pumps]);
   const add = (id: string) => { const p = pumps.find((x: Pump) => x.id === id); if (p) setSP([...sP, p]); };
   const create = async () => {
     if (!cId || sP.length === 0) return; const c = clients.find((x: any) => x.id === cId);
-    await addDoc(collection(db, 'deliveries'), { orderCode: Math.floor(1000 + Math.random()*9000).toString(), clientName: c.name, clientEmail: c.email, clientId: c.id, address: c.address, city: user.city || 'Unknown', state: user.state || 'Unknown', country: user.country || 'EC', status: 'ready', pumps: sP.map((p: Pump) => ({ pumpId: p.id, code: p.code })), createdAt: serverTimestamp(), pharmacyId });
+    await addDoc(collection(db, 'deliveries'), { orderCode: Math.floor(1000 + Math.random()*9000).toString(), clientName: c.name, clientEmail: c.email, clientId: c.id, address: c.address, city: user.city || 'Unknown', state: user.state || 'Unknown', country: user.country || 'EC', status: 'ready', pumps: sP.map(p => ({ pumpId: p.id, code: p.code })), createdAt: serverTimestamp(), pharmacyId });
     onFinish();
   };
   return (
     <div className="space-y-6 animate-in zoom-in-95 text-slate-900">
-      <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-6 text-slate-900"><SearchableSelect label="1. Select Patient" options={clients.map((c:any)=>({label:c.name, value:c.id}))} value={cId} onChange={setCId} />
-        {debts.length > 0 && (<div className="bg-red-50 p-4 rounded-2xl border border-red-100 animate-pulse"><p className="text-[10px] font-black text-red-600 mb-2 uppercase flex items-center gap-1 text-red-600"><AlertTriangle className="w-3 h-3"/> UNRETURNED ASSETS AT HOME:</p><div className="flex flex-wrap gap-1 text-slate-900">{debts.map((p: Pump) => <span key={p.id} className="text-[10px] bg-white px-2 py-1 rounded font-mono font-bold text-red-700 border border-red-200 text-red-700">{p.code}</span>)}</div></div>)}
+      <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-6 text-slate-900">
+        <SearchableSelect label="1. Select Patient" options={clients.map((c:any)=>({label:c.name, value:c.id}))} value={cId} onChange={setCId} />
+        {debts.length > 0 && (<div className="bg-red-50 p-4 rounded-2xl border border-red-100 animate-pulse text-red-600"><p className="text-[10px] font-black text-red-600 mb-2 uppercase flex items-center gap-1 text-red-600"><AlertTriangle className="w-3 h-3"/> UNRETURNED ASSETS AT HOME:</p><div className="flex flex-wrap gap-1">{debts.map((p: Pump) => <span key={p.id} className="text-[10px] bg-white px-2 py-1 rounded font-mono font-bold text-red-700 border border-red-200 text-red-700">{p.code}</span>)}</div></div>)}
         <SearchableSelect label="2. Assign Delivery Items" options={pumps.filter((p:Pump)=>p.status==='available'&&!sP.find(x=>x.id===p.id)).map((p:Pump)=>({label:p.code, value:p.id}))} value="" onChange={add} />
         {sP.length > 0 && (<div className="space-y-2 text-slate-900">{sP.map((p: Pump) => (<div key={p.id} className="flex justify-between items-center p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-slate-900"><div><p className="font-black text-xs uppercase opacity-70">S/N: {p.code}</p></div><button onClick={()=>setSP(sP.filter(x=>x.id!==p.id))} className="text-red-500 hover:bg-red-50 p-1 rounded-full text-red-500"><XCircle className="w-5 h-5"/></button></div>))}</div>)}
       </div>
-      <button onClick={create} disabled={!cId || sP.length === 0} className="w-full bg-[#0f172a] text-white py-6 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 text-white shadow-slate-900/10">Initialize Dispatch</button>
+      <button onClick={create} disabled={!cId || sP.length === 0} className="w-full bg-[#0f172a] text-white py-6 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all text-white">Initialize Dispatch</button>
     </div>
   );
 }
 
-function ReturnPumpsForm({ drivers, pumps, onFinish, pharmacyId }: any) {
+function ReturnProcessForm({ drivers, pumps, onFinish, pharmacyId }: any) {
     const [driverId, setDriverId] = useState(""); const [selectedPumps, setSelectedPumps] = useState<string[]>([]); const [signDriver, setSignDriver] = useState(""); const [signStaff, setSignStaff] = useState(""); const [loading, setLoading] = useState(false);
     const indebtedDrivers = drivers.filter((d: Employee) => pumps.some((p: Pump) => p.status === 'with_driver' && p.currentDriverId === d.id && p.pharmacyId === pharmacyId));
     const driverPumps = pumps.filter((p: Pump) => p.status === 'with_driver' && p.currentDriverId === driverId && p.pharmacyId === pharmacyId);
@@ -372,26 +377,30 @@ function ReturnPumpsForm({ drivers, pumps, onFinish, pharmacyId }: any) {
     };
     return (
         <div className="space-y-6 p-4 animate-in zoom-in-95 text-slate-900">
-            <div className="flex justify-between items-center text-slate-900 text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">Inventory Reception</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
-            <div className="bg-white p-6 rounded-4xl shadow-lg border border-slate-100 space-y-6 text-slate-900">
+            <div className="flex justify-between items-center text-slate-900 text-slate-900 text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900 text-slate-900">Inventory Reception</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
+            <div className="bg-white p-6 rounded-4xl shadow-lg border border-slate-100 space-y-6 text-slate-900 text-slate-900">
                 <SearchableSelect label="1. Select Returning Driver" options={indebtedDrivers.map((d:Employee)=>({label:d.name, value:d.id}))} value={driverId} onChange={(val: string) => { setDriverId(val); setSelectedPumps([]); }} />
-                {driverId && driverPumps.length > 0 && (<div className="space-y-2 text-slate-900"><p className="text-[10px] font-black text-slate-400 uppercase ml-2">Equipment in driver possession</p>{driverPumps.map((p: Pump) => (<div key={p.id} onClick={() => setSelectedPumps(selectedPumps.includes(p.id) ? selectedPumps.filter(i=>i!==p.id) : [...selectedPumps, p.id])} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedPumps.includes(p.id) ? 'border-emerald-500 bg-emerald-50 text-emerald-500' : 'border-slate-100'}`}><div><p className="font-black text-slate-900 text-sm">S/N: {p.code}</p></div>{selectedPumps.includes(p.id) && <CheckCircle className="w-5 h-5 text-emerald-500" />}</div>))}</div>)}
-                {selectedPumps.length > 0 && (<div className="space-y-4 pt-4 border-t border-slate-100 text-slate-900"><SignaturePad onSave={setSignDriver} label="Driver Handover Signature" /><SignaturePad onSave={setSignStaff} label="Staff Receipt Signature" /></div>)}
+                {driverId && driverPumps.length > 0 && (<div className="space-y-2 text-slate-900"><p className="text-[10px] font-black text-slate-400 uppercase ml-2 text-slate-400">Equipment in driver possession</p>{driverPumps.map((p: Pump) => (<div key={p.id} onClick={() => setSelectedPumps(selectedPumps.includes(p.id) ? selectedPumps.filter(i=>i!==p.id) : [...selectedPumps, p.id])} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedPumps.includes(p.id) ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100'} text-slate-900`}><div><p className="font-black text-slate-900 text-sm">S/N: {p.code}</p></div>{selectedPumps.includes(p.id) && <CheckCircle className="w-5 h-5 text-emerald-500" />}</div>))}</div>)}
+                {selectedPumps.length > 0 && (<div className="space-y-4 pt-4 border-t border-slate-100 text-slate-900 text-slate-900"><SignaturePad onSave={setSignDriver} label="Driver Handover Signature" /><SignaturePad onSave={setSignStaff} label="Staff Receipt Signature" /></div>)}
             </div>
-            <button onClick={processReturn} disabled={loading || !signDriver || !signStaff || selectedPumps.length === 0} className="w-full bg-[#10b981] text-slate-900 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 disabled:opacity-50 shadow-xl transition-all text-white shadow-emerald-500/20">Confirm Handover</button>
+            <button onClick={processReturn} disabled={loading || !signDriver || !signStaff || selectedPumps.length === 0} className="w-full bg-[#10b981] text-slate-900 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 disabled:opacity-50 transition-all text-white shadow-emerald-500/20">Confirm Handover</button>
         </div>
     );
 }
 
-function DriverApp({ orders, allPumps, user, onLogout, myCustodyPumps, onOpenManual }: any) {
-  const activeOrder = orders.find((o: Order) => o.claimedBy === user.id && o.status !== 'delivered');
+/* ==========================================================================
+   7. DRIVER SYSTEM
+   ========================================================================== */
+
+function DriverApp({ orders, allPumps, user, onLogout, myCustodyPumps, onOpenManual, allOrders }: any) {
+  const activeOrder = allOrders.find((o: Order) => o.claimedBy === user.id && o.status !== 'delivered');
   const claimOrder = async (id: string) => { await updateDoc(doc(db, 'deliveries', id), { status: 'claimed', claimedBy: user.id, claimedAt: serverTimestamp() }); };
   if (activeOrder) return <DriverWorkflow order={activeOrder} allPumps={allPumps} user={user} pharmacyId={activeOrder.pharmacyId} />;
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 text-slate-900 text-slate-900">
         <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm"><div><h2 className="text-2xl font-black italic text-[#0f172a] uppercase tracking-tighter">{user.city || 'Fleet'}</h2><p className="text-[10px] font-black text-indigo-600 mt-1 uppercase tracking-widest">{user.name}</p></div><div className="flex gap-2"><button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><BookOpen className="w-6 h-6 text-indigo-600"/></button><button onClick={onLogout} className="p-4 bg-slate-100 rounded-2xl text-slate-900 transition-colors active:bg-slate-200 text-slate-950"><LogOut/></button></div></header>
-        {myCustodyPumps.length > 0 && (<div className="mx-6 mt-4 bg-red-500 p-5 rounded-3xl text-white shadow-lg animate-pulse text-white text-white"><div className="flex items-center gap-2 mb-2 text-white"><AlertTriangle/><span className="font-black text-xs uppercase tracking-widest">RETURN REQUIRED</span></div><div className="flex flex-wrap gap-2 text-white">{myCustodyPumps.map((p: Pump) => <span key={p.id} className="text-[9px] bg-white text-red-600 px-2 py-1 rounded font-black text-red-600">{p.code}</span>)}</div></div>)}
-        <div className="p-6 space-y-4 flex-1 overflow-y-auto pb-20 text-slate-900"> {orders.filter((o:Order)=>o.status==='ready').length === 0 ? <div className="text-center py-20 opacity-30 font-black text-xs uppercase tracking-widest">No active routes available</div> : orders.filter((o:Order)=>o.status==='ready').map((o: Order) => (<div key={o.id} className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 animate-in slide-in-from-bottom-8 duration-500 text-slate-900"><div className="flex justify-between mb-6 text-slate-900"><span className="text-[10px] font-black text-indigo-600 tracking-widest uppercase text-indigo-600">#{o.orderCode}</span><span className="bg-slate-100 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter text-slate-600">READY</span></div><h3 className="text-2xl font-black text-slate-800 mb-2 leading-none text-slate-950">{o.clientName}</h3><p className="text-xs text-slate-500 mb-8 flex items-center gap-2 font-bold uppercase text-slate-400"><MapPin className="w-4 h-4 text-emerald-500"/> {o.address}</p><button onClick={()=>claimOrder(o.id)} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all shadow-xl text-white">Accept Dispatch</button></div>))}</div>
+        {myCustodyPumps.length > 0 && (<div className="mx-6 mt-4 bg-red-500 p-5 rounded-[2rem] text-white shadow-lg animate-pulse text-white text-white text-white text-white"><div className="flex items-center gap-2 mb-2 text-white"><AlertTriangle/><span className="font-black text-xs uppercase tracking-widest text-white text-white">HANDOVER REQUIRED</span></div><div className="flex flex-wrap gap-2">{myCustodyPumps.map((p: Pump) => <span key={p.id} className="text-[10px] bg-white text-red-600 px-2 py-1 rounded font-black">{p.code}</span>)}</div></div>)}
+        <div className="p-6 space-y-4 flex-1 overflow-y-auto pb-20 text-slate-900"> {orders.filter((o:Order)=>o.status==='ready').length === 0 ? <div className="text-center py-20 opacity-30 font-black text-xs uppercase tracking-widest text-slate-400">No active routes available</div> : orders.filter((o:Order)=>o.status==='ready').map((o: Order) => (<div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-xl border animate-in slide-in-from-bottom-8 duration-500 text-slate-900 text-slate-900 text-slate-900"><div className="flex justify-between mb-6 text-slate-900"><span className="text-[10px] font-black text-indigo-600 tracking-widest uppercase text-indigo-600">#{o.orderCode}</span><span className="bg-slate-100 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter text-slate-600">READY</span></div><h3 className="text-2xl font-black text-slate-800 mb-2 leading-none text-slate-950">{o.clientName}</h3><p className="text-xs text-slate-500 mb-8 flex items-center gap-2 font-bold uppercase text-slate-400"><MapPin className="w-4 h-4 text-emerald-500"/> {o.address}</p><button onClick={()=>claimOrder(o.id)} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all shadow-xl text-white text-white">Accept Dispatch</button></div>))}</div>
     </div>
   );
 }
@@ -418,63 +427,51 @@ function DriverWorkflow({ order, allPumps, user, pharmacyId }: any) {
     };
     return (
       <div className="flex-1 flex flex-col bg-white text-slate-900 text-slate-900 text-slate-900">
-        <div className="bg-[#0f172a] p-10 pt-16 rounded-b-4xl text-white shadow-2xl text-white">
-          <h2 className="text-3xl font-black italic tracking-tighter text-white">#{order.orderCode}</h2>
-          <p className="text-[10px] font-black text-emerald-400 mt-2 tracking-widest uppercase text-emerald-400">{step.toUpperCase()}</p>
+        <div className="bg-[#0f172a] p-10 pt-16 rounded-b-[4rem] text-white shadow-2xl text-white">
+          <h2 className="text-3xl font-black italic tracking-tighter text-white text-white text-white text-white text-white">#{order.orderCode}</h2>
+          <p className="text-[10px] font-black text-emerald-400 mt-2 tracking-widest uppercase text-emerald-400 text-emerald-400">{step.toUpperCase()}</p>
         </div>
-        <div className="flex-1 p-8 space-y-8 overflow-y-auto text-slate-900 text-slate-900">
+        <div className="flex-1 p-8 space-y-8 overflow-y-auto text-slate-900 text-slate-900 text-slate-900">
           {step === 'pickup' ? (
             <div className="space-y-6 text-slate-900">
-              {pR.length > 0 && (<div className="bg-amber-100 p-6 rounded-3xl border-2 border-amber-300 animate-pulse text-amber-700"><p className="text-xs font-black mb-3 uppercase flex items-center gap-2 text-amber-700"><AlertTriangle/> Return Debt to Office</p><div className="flex flex-wrap gap-2 text-slate-900">{pR.map((p: Pump)=>(<div key={p.id} className="bg-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm">S/N: {p.code}</div>))}</div></div>)}
-              <div className="bg-slate-50 p-6 rounded-3xl shadow-inner text-slate-900"><p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">Handover Checklist:</p>{order.pumps.map((p:any)=><p key={p.code} className="font-black text-2xl text-[#0f172a] mb-1">S/N: {p.code}</p>)}</div>
+              {pR.length > 0 && (<div className="bg-amber-100 p-6 rounded-[2rem] border-2 border-amber-300 animate-pulse text-amber-700 text-amber-700 text-amber-700 text-amber-700"><p className="text-xs font-black mb-3 uppercase flex items-center gap-2"><AlertTriangle/> Return Debt to Office</p><div className="flex flex-wrap gap-2">{pR.map((p: Pump)=>(<div key={p.id} className="bg-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm text-slate-900 text-slate-900">S/N: {p.code}</div>))}</div></div>)}
+              <div className="bg-slate-50 p-6 rounded-[2.5rem] shadow-inner text-slate-900 text-slate-900"><p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest text-slate-400">Handover Checklist:</p>{order.pumps.map((p:any)=><p key={p.code} className="font-black text-2xl text-[#0f172a] mb-1 text-slate-950">S/N: {p.code}</p>)}</div>
               <SignaturePad onSave={setS1} label="Office Handover Receipt Signature" />
             </div>
           ) : (
-            <div className="space-y-6 text-slate-900">
-              <div className="p-8 bg-[#0f172a] rounded-4xl text-white shadow-xl text-white text-white">
+            <div className="space-y-6 text-slate-900 text-slate-900 text-slate-900 text-slate-900">
+              <div className="p-8 bg-[#0f172a] rounded-[3rem] text-white shadow-xl text-white text-white">
                 <h3 className="text-2xl font-black mb-1 leading-tight text-white">{order.clientName}</h3>
-                <p className="text-sm opacity-60 flex items-center gap-2 font-bold text-white/50"><MapPin className="w-4 h-4 text-white"/> {order.address}</p>
+                <p className="text-sm opacity-60 flex items-center gap-2 font-bold text-white/50 text-white/50"><MapPin className="w-4 h-4 text-white"/> {order.address}</p>
               </div>
-              {cD.length > 0 && (<div className="space-y-4">{cD.map((p: Pump)=>(<div key={p.id} className="p-5 rounded-3xl border-2 flex justify-between items-center bg-white shadow-sm border-slate-100 text-slate-900"><div><p className="font-black text-lg text-indigo-950">#{p.code}</p><p className="text-[10px] text-red-500 font-black uppercase tracking-tighter">Collect from patient</p></div><button onClick={()=>setDS({...dS, [p.id]:'collected'})} className={`p-4 rounded-2xl transition-all ${dS[p.id]==='collected'?'bg-emerald-500 text-white scale-110 shadow-lg shadow-emerald-500/30 text-white':'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}><CheckCircle/></button></div>))}</div>)}
-              <div className="space-y-4 pt-4 text-slate-900"><SignaturePad onSave={setS1} label="Proof of Delivery Signature" /><SignaturePad onSave={setS2} label="Patient Receipt Signature" /></div>
+              {cD.length > 0 && (<div className="space-y-4">{cD.map((p: Pump)=>(<div key={p.id} className="p-5 rounded-3xl border-2 flex justify-between items-center bg-white shadow-sm border-slate-100 text-slate-900"><div><p className="font-black text-lg text-indigo-950 text-indigo-950">#{p.code}</p><p className="text-[10px] text-red-500 font-black uppercase tracking-tighter text-red-500">Collect from patient</p></div><button onClick={()=>setDS({...dS, [p.id]:'collected'})} className={`p-4 rounded-2xl transition-all ${dS[p.id]==='collected'?'bg-emerald-500 text-white scale-110 shadow-lg shadow-emerald-500/30 text-white text-white':'bg-slate-100 text-slate-400'}`}><CheckCircle/></button></div>))}</div>)}
+              <div className="space-y-4 pt-4 text-slate-900 text-slate-900"><SignaturePad onSave={setS1} label="Proof of Delivery Signature" /><SignaturePad onSave={setS2} label="Patient Receipt Signature" /></div>
             </div>
           )}
         </div>
-        <div className="p-6 border-t bg-white text-slate-900 text-slate-900"><button onClick={action} disabled={!s1 || (step==='delivery'&&!s2)} className="w-full bg-[#10b981] text-slate-900 py-6 rounded-4xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all shadow-xl text-slate-950">Confirm Protocol Step</button></div>
+        <div className="p-6 border-t bg-white text-slate-900 text-slate-900 text-slate-900"><button onClick={action} disabled={!s1 || (step==='delivery'&&!s2)} className="w-full bg-[#10b981] text-slate-900 py-6 rounded-4xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all shadow-xl text-slate-950 text-slate-950">Confirm Protocol Step</button></div>
       </div>
     );
 }
 
 /* ==========================================================================
-   7. SELECTION & AUTH VIEWS
+   8. AUTH & REGISTER ENGINE
    ========================================================================== */
 
 function SelectionView({ onLogin, onRegister, onOpenManual }: any) {
   return (
-    <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white relative overflow-hidden text-center text-white">
-        <div className="w-24 h-24 bg-emerald-500 rounded-3xl flex items-center justify-center mb-8 shadow-2xl animate-bounce duration-[3000ms] shadow-emerald-500/20 text-white"><Truck className="w-12 h-12 text-[#0f172a]" /></div>
+    <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white relative overflow-hidden text-center text-white text-white text-white">
+        <div className="w-24 h-24 bg-emerald-500 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-2xl animate-bounce duration-[3000ms] shadow-emerald-500/20 text-white text-white text-white"><Truck className="w-12 h-12 text-[#0f172a]" /></div>
         <h1 className="text-4xl font-black italic tracking-tighter mb-1 uppercase text-white">Dispatcher Pro</h1>
         <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-16 opacity-50 text-white">Smart Medical Logistics Platform</p>
-        <div className="w-full max-w-xs space-y-4 text-white">
-            <button onClick={onLogin} className="w-full bg-white text-[#0f172a] py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 shadow-xl transition-all active:scale-95 text-[#0f172a]"><span>Portal Access</span><ArrowRight className="w-5 h-5 text-emerald-600"/></button>
+        <div className="w-full max-w-xs space-y-4 text-white text-white text-white text-white text-white">
+            <button onClick={onLogin} className="w-full bg-white text-[#0f172a] py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 shadow-xl transition-all active:scale-95 text-[#0f172a] text-slate-950"><span>Portal Access</span><ArrowRight className="w-5 h-5 text-emerald-600"/></button>
             <button onClick={onRegister} className="w-full bg-white/5 border border-white/10 py-6 rounded-4xl font-black uppercase text-xs flex items-center justify-between px-10 hover:bg-white/10 transition-all active:scale-95 text-white"><span>Register Account</span><Plus className="w-5 h-5 text-emerald-400"/></button>
             <button onClick={onOpenManual} className="w-full mt-4 flex items-center justify-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors text-indigo-400"><BookOpen className="w-4 h-4 text-indigo-400"/> Help & Manual</button>
         </div>
-    </div>
-  );
-}
-
-function LoginView({ pin, error, onInput, onClear, onBack }: any) {
-  return (
-    <div className="min-h-screen bg-[#0f172a] flex flex-col items-center p-8 text-white text-white">
-        <button onClick={onBack} className="self-start p-4 bg-white/5 rounded-2xl mb-8 transition-colors hover:bg-white/10 text-white"><ChevronLeft className="text-white"/></button>
-        <h2 className="text-3xl font-black italic mb-2 tracking-tighter uppercase text-center text-white">Secure Access</h2>
-        <div className="flex gap-4 mb-16 h-8 mt-10 text-white text-white">{[...Array(4)].map((_, i) => (<div key={i} className={`w-3 h-3 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-emerald-500 scale-150 shadow-lg shadow-emerald-500/50' : 'bg-slate-800'}`} />))}</div>
-        {error && <p className="text-red-500 text-[10px] font-black uppercase mb-6 animate-pulse text-center text-red-500 text-red-500">{error}</p>}
-        <div className="grid grid-cols-3 gap-4 w-full max-w-[300px] text-white">
-            {[1,2,3,4,5,6,7,8,9].map(n => (<button key={n} onClick={() => onInput(n.toString())} className="h-20 rounded-3xl bg-white/5 text-2xl font-black hover:bg-white/10 active:scale-90 transition-all text-white">{n}</button>))}
-            <button onClick={onClear} className="h-20 rounded-3xl bg-red-500/10 text-red-500 font-black text-xs uppercase flex items-center justify-center active:scale-95 text-red-500 text-red-500 text-red-500">CLR</button>
-            <button onClick={() => onInput("0")} className="h-20 rounded-3xl bg-white/5 text-2xl font-black text-white">0</button>
+        {/* BOTÓN ADMINISTRADOR MAESTRO (PARA ACCESO 1844) */}
+        <div className="absolute bottom-10">
+            <button onClick={onLogin} className="text-[10px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors text-slate-500">Administrator Portal</button>
         </div>
     </div>
   );
@@ -486,33 +483,31 @@ function RegisterView({ onBack, allAdmins }: { onBack: () => void, allAdmins: Em
     const [adminPinToJoin, setAdminPinToJoin] = useState("");
 
     const register = async () => {
-        if (!form.name || !form.email || !form.city || !form.state) return;
+        if (!form.name || !form.email || !form.city || !form.state || !form.country) return;
         if ((form.role === 'driver' || form.role === 'pharmacy_staff') && !sign) return;
         setLoad(true);
         try {
             if (form.role === 'pharmacy_admin') {
                 const q = query(collection(db, 'pharmacyEmployees'), where('role', '==', 'license_code'), where('code', '==', lic), where('status', '==', 'active'));
-                const s = await getDocs(q); if (s.empty) { alert("Invalid or Expired Activation Code"); setLoad(false); return; }
+                const s = await getDocs(q); if (s.empty) { alert("Invalid Activation Code"); setLoad(false); return; }
                 await updateDoc(doc(db, 'pharmacyEmployees', s.docs[0].id), { status: 'used', usedBy: form.email });
             }
             if (form.role === 'pharmacy_staff') {
                 const admin = allAdmins.find(a => a.id === form.pharmacyId && a.pin === adminPinToJoin);
-                if (!admin) { alert("Invalid Pharmacy Authorization PIN"); setLoad(false); return; }
+                if (!admin) { alert("Invalid Pharmacy Admin PIN"); setLoad(false); return; }
             }
-
             const pinVal = Math.floor(1000 + Math.random() * 9000).toString();
             const col = form.role === 'driver' ? 'deliveryDrivers' : 'pharmacyEmployees';
             const docRef = await addDoc(collection(db, col), { ...form, pin: pinVal, signature: sign || "", createdAt: serverTimestamp() });
             if (form.role === 'pharmacy_admin') await updateDoc(docRef, { pharmacyId: docRef.id });
-            
             setNewPin(pinVal);
         } catch (e: any) { alert(e.message); } setLoad(false);
     };
 
-    if (newPin) return (<div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white text-center shadow-inner text-white"><h2 className="text-3xl font-black italic mb-4 uppercase text-white tracking-tighter text-white">Registration Complete</h2><p className="text-sm text-slate-400 mb-2 uppercase tracking-widest text-white">Your Private Access PIN:</p><p className="text-7xl font-black text-emerald-400 mb-10 tracking-tighter text-emerald-400">{newPin}</p><button onClick={onBack} className="w-full bg-white text-[#0f172a] py-5 rounded-4xl font-black uppercase text-xs active:scale-95 transition-all text-slate-950 shadow-emerald-500/20">Login Now</button></div>);
+    if (newPin) return (<div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center p-8 text-white text-center shadow-inner text-white text-white text-white text-white"><h2 className="text-3xl font-black italic mb-4 uppercase text-white tracking-tighter text-white">SUCCESS</h2><p className="text-sm text-slate-400 mb-2 uppercase tracking-widest text-white">Your Access PIN:</p><p className="text-7xl font-black text-emerald-400 mb-10 tracking-tighter text-emerald-400">{newPin}</p><button onClick={onBack} className="w-full bg-white text-[#0f172a] py-5 rounded-4xl font-black uppercase text-xs active:scale-95 text-slate-950 shadow-emerald-500/20 text-slate-950">Login Now</button></div>);
     
     return (
-        <div className="min-h-screen bg-[#0f172a] flex flex-col p-8 text-white overflow-y-auto pb-20 text-white">
+        <div className="min-h-screen bg-[#0f172a] flex flex-col p-8 text-white overflow-y-auto pb-20">
             <button onClick={onBack} className="self-start p-4 bg-white/5 rounded-2xl mb-8 transition-colors hover:bg-white/10 text-white"><ChevronLeft className="text-white"/></button>
             <h2 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-white">Account Setup</h2>
             <div className="flex flex-wrap gap-2 mb-8 text-white">
@@ -520,29 +515,55 @@ function RegisterView({ onBack, allAdmins }: { onBack: () => void, allAdmins: Em
                 <button onClick={() => setForm({...form, role: 'pharmacy_admin'})} className={`flex-1 py-4 rounded-2xl font-black text-[9px] uppercase border transition-all ${form.role === 'pharmacy_admin' ? 'bg-indigo-600 border-indigo-600 shadow-lg text-white' : 'bg-transparent border-white/10 text-slate-400'}`}>Pharmacy Registration</button>
                 <button onClick={() => setForm({...form, role: 'pharmacy_staff'})} className={`flex-1 py-4 rounded-2xl font-black text-[9px] uppercase border transition-all ${form.role === 'pharmacy_staff' ? 'bg-indigo-600 border-indigo-600 shadow-lg text-white' : 'bg-transparent border-white/10 text-slate-400'}`}>Staff Registration</button>
             </div>
-            <div className="space-y-4 text-white text-white">
+            <div className="space-y-4 text-white">
                 {form.role === 'pharmacy_admin' && (<input className="w-full bg-white/5 p-4 rounded-2xl font-black border border-emerald-500/30 text-emerald-300 outline-none uppercase placeholder-emerald-500/50" placeholder="Activation License Key" value={lic} onChange={e=>setLic(e.target.value.toUpperCase())} />)}
                 {form.role === 'pharmacy_staff' && (
-                  <div className="space-y-3 p-4 bg-white/5 rounded-3xl border border-white/10 text-white">
-                    <SearchableSelect label="Authorized Pharmacy" options={allAdmins.map(a=>({label: `${a.name} (${a.city})`, value: a.id}))} value={form.pharmacyId} onChange={(v:any)=>setForm({...form, pharmacyId: v})}/>
-                    <input className="w-full bg-white/10 p-4 rounded-2xl font-black outline-none text-center text-white" placeholder="Admin PIN Code" maxLength={4} value={adminPinToJoin} onChange={e=>setAdminPinToJoin(e.target.value)} />
+                  <div className="space-y-3 p-4 bg-white/5 rounded-3xl border border-white/10 text-white text-white">
+                    <SearchableSelect label="Join Authorized Pharmacy" options={allAdmins.map(a=>({label: `${a.name} (${a.city})`, value: a.id}))} value={form.pharmacyId} onChange={(v:any)=>setForm({...form, pharmacyId: v})}/>
+                    <input className="w-full bg-white/10 p-4 rounded-2xl font-black outline-none text-center text-white" placeholder="Admin Secret PIN" maxLength={4} value={adminPinToJoin} onChange={e=>setAdminPinToJoin(e.target.value)} />
                   </div>
                 )}
-                <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30" placeholder="Full Name" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} />
-                <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30" placeholder="Email Address" value={form.email} onChange={e=>setForm({...form, email: e.target.value})} />
-                <div className="grid grid-cols-2 gap-2 text-slate-900">
-                    <select className="w-full bg-white/5 p-4 rounded-2xl border border-white/10 text-sm text-white" value={form.state} onChange={e=>setForm({...form, state: e.target.value})}><option value="" className="text-black text-black">Select State...</option>{LOCATIONS[form.country]?.states.map(s=><option key={s} value={s} className="text-black">{s}</option>)}</select>
-                    <input className="bg-white/5 p-4 w-full rounded-2xl border border-white/10 font-bold outline-none text-white placeholder-white/30" placeholder="City" value={form.city} onChange={e=>setForm({...form, city: e.target.value})} />
+                <div className="space-y-1 text-white">
+                    <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase text-indigo-400">Select Country</label>
+                    <select className="w-full bg-white/5 p-4 rounded-2xl border border-white/10 text-sm text-white" value={form.country} onChange={e=>setForm({...form, country: e.target.value, state: ''})}>{Object.keys(LOCATIONS).map(k=><option key={k} value={k} className="text-black">{LOCATIONS[k].label}</option>)}</select>
                 </div>
-                {(form.role === 'driver' || form.role === 'pharmacy_staff') && <SignaturePad onSave={setSign} label="Identity Validation Signature" />}
-                <button onClick={register} disabled={load || ((form.role==='driver' || form.role==='pharmacy_staff') && !sign)} className="w-full bg-emerald-600 py-6 rounded-4xl font-black uppercase text-sm mt-4 shadow-xl active:scale-95 transition-all disabled:opacity-50 text-slate-950 shadow-emerald-500/30 text-slate-950">{load ? "Processing..." : "Confirm Activation"}</button>
+                <div className="grid grid-cols-2 gap-2 text-slate-900">
+                    <div className="space-y-1 text-white text-white text-white">
+                        <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase text-indigo-400">State/Province</label>
+                        <select className="w-full bg-white/5 p-4 rounded-2xl border border-white/10 text-sm text-white" value={form.state} onChange={e=>setForm({...form, state: e.target.value})}><option value="" className="text-black text-black text-black">Select...</option>{LOCATIONS[form.country]?.states.map(s=><option key={s} value={s} className="text-black text-black text-black">{s}</option>)}</select>
+                    </div>
+                    <div className="space-y-1 text-white text-white">
+                        <label className="text-[10px] font-black text-indigo-400 ml-3 uppercase text-indigo-400">City</label>
+                        <input className="bg-white/5 p-4 h-[54px] w-full rounded-2xl border border-white/10 font-bold outline-none text-white placeholder-white/30 text-white" placeholder="City" value={form.city} onChange={e=>setForm({...form, city: e.target.value})} />
+                    </div>
+                </div>
+                <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30 text-white" placeholder="Full Name" value={form.name} onChange={e=>setForm({...form, name: e.target.value})} />
+                <input className="w-full bg-white/5 p-4 rounded-2xl font-bold border border-white/10 outline-none text-white placeholder-white/30 text-white" placeholder="Email Address" value={form.email} onChange={e=>setForm({...form, email: e.target.value})} />
+                {(form.role === 'driver' || form.role === 'pharmacy_staff') && <SignaturePad onSave={setSign} label="Personal Identity Signature" />}
+                <button onClick={register} disabled={load || ((form.role==='driver' || form.role==='pharmacy_staff') && !sign)} className="w-full bg-emerald-600 py-6 rounded-4xl font-black uppercase text-sm mt-4 shadow-xl active:scale-95 disabled:opacity-50 text-slate-950 shadow-emerald-500/30 text-slate-950">{load ? "Saving..." : "Confirm Activation"}</button>
             </div>
         </div>
     );
 }
 
+function LoginView({ pin, error, onInput, onClear, onBack }: any) {
+  return (
+    <div className="min-h-screen bg-[#0f172a] flex flex-col items-center p-8 text-white">
+        <button onClick={onBack} className="self-start p-4 bg-white/5 rounded-2xl mb-8 transition-colors hover:bg-white/10 text-white"><ChevronLeft className="text-white"/></button>
+        <h2 className="text-3xl font-black italic mb-2 tracking-tighter uppercase text-center text-white">Secure Access</h2>
+        <div className="flex gap-4 mb-16 h-8 mt-10 text-white">{[...Array(4)].map((_, i) => (<div key={i} className={`w-3 h-3 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-emerald-500 scale-150 shadow-lg shadow-emerald-500/50' : 'bg-slate-800'}`} />))}</div>
+        {error && <p className="text-red-500 text-[10px] font-black uppercase mb-6 animate-pulse text-center text-red-500">{error}</p>}
+        <div className="grid grid-cols-3 gap-4 w-full max-w-[300px] text-white">
+            {[1,2,3,4,5,6,7,8,9].map(n => (<button key={n} onClick={() => onInput(n.toString())} className="h-20 rounded-3xl bg-white/5 text-2xl font-black hover:bg-white/10 active:scale-90 transition-all text-white">{n}</button>))}
+            <button onClick={onClear} className="h-20 rounded-3xl bg-red-500/10 text-red-500 font-black text-xs uppercase flex items-center justify-center active:scale-95 text-red-500">CLR</button>
+            <button onClick={() => onInput("0")} className="h-20 rounded-3xl bg-white/5 text-2xl font-black text-white">0</button>
+        </div>
+    </div>
+  );
+}
+
 /* ==========================================================================
-   9. ROOT APP ENGINE
+   10. MAIN APP LOGIC
    ========================================================================== */
 
 export default function App() {
@@ -584,12 +605,13 @@ export default function App() {
 
   const handlePinInput = (digit: string) => {
     if (pin.length < 4) {
-      const newPin = pin + digit; setPin(newPin);
-      if (newPin.length === 4) {
-        if (newPin === "1844") { setPin(""); setView('super_admin'); return; }
-        const emp = employees.find((e: Employee) => e.pin === newPin);
+      const newPinValue = pin + digit; setPin(newPinValue);
+      if (newPinValue.length === 4) {
+        // 🔥 ACCESO MAESTRO 1844 🔥
+        if (newPinValue === "1844") { setPin(""); setView('super_admin'); return; }
+        const emp = employees.find((e: Employee) => e.pin === newPinValue);
         if (emp) { setActiveEmployee(emp); setPin(""); setView(emp.role === 'pharmacy_admin' ? 'pharmacy_admin' : 'pharmacy_staff'); return; } 
-        const dri = drivers.find((d: Employee) => d.pin === newPin);
+        const dri = drivers.find((d: Employee) => d.pin === newPinValue);
         if (dri) { setActiveEmployee(dri); setPin(""); setView('driver_market'); return; }
         setLoginError("PIN INCORRECT"); setTimeout(() => { setPin(""); setLoginError(""); }, 1000);
       }
@@ -605,17 +627,32 @@ export default function App() {
   if (view === 'selection') return <SelectionView onLogin={() => setView('login')} onRegister={() => setView('register')} onOpenManual={() => setView('manual')} />;
   if (view === 'login') return <LoginView pin={pin} error={loginError} onInput={handlePinInput} onClear={() => setPin("")} onBack={() => setView('selection')} />;
   if (view === 'register') return <RegisterView onBack={() => setView('selection')} allAdmins={employees.filter((e: Employee) => e.role === 'pharmacy_admin')} />;
+  if (view === 'super_admin') return <SuperAdminView onLogout={() => { setView('selection'); setPin(""); }} employees={employees} drivers={drivers} />;
 
   if ((view === 'pharmacy_admin' || view === 'pharmacy_staff') && activeEmployee) {
     const pId = activeEmployee.pharmacyId || activeEmployee.id;
-    return <PharmacyAdminView user={activeEmployee} pharmacyId={pId} orders={orders.filter((o: Order) => o.pharmacyId === pId)} pumps={pumps.filter((p: Pump) => p.pharmacyId === pId)} clients={clients.filter((c: Client) => c.pharmacyId === pId)} staff={employees.filter((e: Employee) => e.pharmacyId === pId && e.role === 'pharmacy_staff')} drivers={drivers} onLogout={() => { setView('selection'); setPin(""); }} allPumps={pumps} onOpenManual={() => setView('manual')} />;
+    return <PharmacyAdminView user={activeEmployee} pharmacyId={pId} orders={orders.filter(o => o.pharmacyId === pId)} pumps={pumps.filter(p => p.pharmacyId === pId)} clients={clients.filter(c => c.pharmacyId === pId)} staff={employees.filter(e => e.pharmacyId === pId && e.role === 'pharmacy_staff')} drivers={drivers} onLogout={() => { setView('selection'); setPin(""); }} allPumps={pumps} onOpenManual={() => setView('manual')} />;
   }
 
   if (view === 'driver_market' && activeEmployee) {
     const myCustody = pumps.filter((p: Pump) => p.status === 'with_driver' && p.currentDriverId === activeEmployee.id);
     const local = orders.filter((o: Order) => (o.status === 'ready') && (o.city?.toLowerCase() === activeEmployee.city?.toLowerCase() || o.state?.toLowerCase() === activeEmployee.state?.toLowerCase()));
-    return <DriverApp user={activeEmployee} orders={local} allOrders={orders} allPumps={pumps} myCustodyPumps={myCustody} onLogout={() => { setView('selection'); setPin(""); }} onOpenManual={() => setView('manual')} />;
+    return <DriverApp user={activeEmployee} orders={local} allOrders={orders} allPumps={pumps} myCustodyPumps={myCustody} onLogout={() => { setActiveEmployee(null); setView('selection'); setPin(""); }} onOpenManual={() => setView('manual')} />;
   }
 
   return null;
+}
+
+function ManualView({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 animate-in fade-in">
+        <header className="p-6 bg-[#0f172a] text-white flex justify-between items-center shadow-lg"><div className="flex items-center gap-3 text-white"><div className="bg-emerald-500 p-2 rounded-xl shadow-lg"><BookOpen className="w-6 h-6 text-slate-950"/></div><h2 className="text-xl font-black italic uppercase tracking-tighter">Support</h2></div><button onClick={onBack} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 text-white"><X className="w-6 h-6 text-white"/></button></header>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
+            {[ { title: "Registration", content: "Select your country (US/EC) and business type. Pharmacy admins need a Key. Staff register by selecting their pharmacy and entering the admin PIN.", icon: <Key className="w-5 h-5"/> }, { title: "Inventory", content: "Log pumps with Serial Numbers. Track real-time status: Available, In-Transit, With Patient.", icon: <Database className="w-5 h-5"/> }, { title: "Notifications", content: "Red badges on your menu show pending dispatches and equipment returns due from drivers.", icon: <Bell className="w-5 h-5"/> } ].map((s, i) => (
+                <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 text-slate-900"><div className="flex items-center gap-3 mb-3 text-indigo-600 font-black uppercase text-sm">{s.icon} {s.title}</div><p className="text-xs text-slate-600 leading-relaxed font-medium">{s.content}</p></div>
+            ))}
+        </div>
+        <div className="p-6 fixed bottom-0 left-0 w-full bg-slate-50/80 backdrop-blur-md"><button onClick={onBack} className="w-full bg-[#0f172a] text-white py-5 rounded-3xl font-black uppercase text-xs active:scale-95 text-white">Go Back</button></div>
+    </div>
+  );
 }
