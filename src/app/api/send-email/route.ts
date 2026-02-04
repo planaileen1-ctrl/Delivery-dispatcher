@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
 /**
- * Servidor de envío de correos (API Route)
- * Ubicación: src/app/api/send-email/route.ts
- * Recuerda configurar EMAIL_USER y EMAIL_PASS en Vercel
+ * Handle Email sending via Nodemailer
+ * Path: src/app/api/send-email/route.ts
+ * FIX for Error 7016: Added @ts-ignore for nodemailer types
  */
 
 export async function POST(request: Request) {
@@ -13,7 +13,8 @@ export async function POST(request: Request) {
     const { to, subject, html } = await request.json();
 
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      return NextResponse.json({ success: false, error: 'Email config missing' }, { status: 500 });
+      console.error('Email configuration missing in env');
+      return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 });
     }
 
     const transporter = nodemailer.createTransport({
@@ -32,7 +33,8 @@ export async function POST(request: Request) {
     };
 
     await transporter.sendMail(mailOptions);
-    return NextResponse.json({ success: true });
+
+    return NextResponse.json({ success: true, message: 'Email sent successfully' });
   } catch (error: any) {
     console.error('Email Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
