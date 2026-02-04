@@ -73,6 +73,19 @@ function LoadingScreen() {
   ); 
 }
 
+function ErrorScreen({ msg, onRetry }: { msg: string, onRetry: () => void }) {
+  return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-8 text-center">
+        <XCircle className="w-16 h-16 text-red-500 mb-4 mx-auto" />
+        <h2 className="text-xl font-bold mb-2 uppercase italic tracking-tighter">System Error</h2>
+        <p className="text-slate-400 text-xs mb-8 max-w-xs mx-auto opacity-60">{msg}</p>
+        <button onClick={onRetry} className="bg-emerald-500 text-slate-900 px-8 py-4 rounded-3xl font-black uppercase text-xs flex items-center gap-2 active:scale-95 transition-all mx-auto shadow-lg">
+          <RefreshCw className="w-4 h-4" /> Reconnect Now
+        </button>
+    </div>
+  );
+}
+
 function SignaturePad({ onSave, label }: { onSave: (data: string) => void, label: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hasSignature, setHasSignature] = useState(false);
@@ -168,10 +181,10 @@ function MenuCard({ icon, label, color, onClick, full, badge }: any) {
 
 function ManualView({ onBack }: { onBack: () => void }) {
   const steps = [
-    { title: "Account Activation", content: "Pharmacy admins must register with a License Key. Once created, they receive a PIN. Employees can register themselves using the pharmacy's name and admin's PIN.", icon: <Key className="w-5 h-5"/> },
-    { title: "Inventory Control", content: "Load equipment using Serial Numbers (S/N). The system tracks real-time status: Available, With Client, or With Driver.", icon: <Database className="w-5 h-5"/> },
-    { title: "Notification Badges", content: "Look for numeric badges (red numbers) on your dashboard. They indicate pending dispatches or equipment that needs to be received from drivers.", icon: <Bell className="w-5 h-5"/> },
-    { title: "Handover Security", content: "Dual digital signatures are mandatory for every custody transfer to ensure a legal record of responsibility.", icon: <ShieldCheck className="w-5 h-5"/> }
+    { title: "Activation", content: "Pharmacy admins must register with a License Key. Once created, they receive a PIN. Employees can register themselves using the pharmacy's name and admin's PIN.", icon: <Key className="w-5 h-5"/> },
+    { title: "Inventory", content: "Load equipment using Serial Numbers (S/N). The system tracks real-time status: Available, With Client, or With Driver.", icon: <Database className="w-5 h-5"/> },
+    { title: "Notificaciones", content: "Look for numeric badges (red numbers) on your dashboard. They indicate pending dispatches or equipment that needs to be received from drivers.", icon: <Bell className="w-5 h-5"/> },
+    { title: "Chain of Custody", content: "Dual digital signatures are mandatory for every custody transfer to ensure a legal record of responsibility.", icon: <ShieldCheck className="w-5 h-5"/> }
   ];
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 animate-in fade-in">
@@ -200,13 +213,39 @@ function ManualView({ onBack }: { onBack: () => void }) {
 }
 
 /* ==========================================================================
-   5. PHARMACY ADMIN & STAFF DASHBOARD
+   5. DASHBOARDS & LOGIC
    ========================================================================== */
+
+function HistoryLogView({ orders, onBack }: any) {
+  const hist = (orders || []).filter((o: any) => o.status === 'delivered' || o.status === 'cancelled').sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
+        <div className="p-6 flex justify-between items-center bg-white border-b sticky top-0 z-20 text-slate-900"><h2 className="text-xl font-black italic uppercase text-slate-900">History Log</h2><button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 text-slate-900">
+            {hist.length === 0 ? <p className="text-center py-20 opacity-30 uppercase text-xs font-black">History empty</p> : hist.map((o: any) => (
+                <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 animate-in text-slate-900"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest text-indigo-600">#{o.orderCode}</span><span className={`text-[8px] px-2 py-1 rounded font-black uppercase ${o.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>{o.status}</span></div><h4 className="font-bold text-slate-800">{o.clientName}</h4><p className="text-[10px] text-slate-400 mb-3 uppercase text-slate-400">{o.address}</p>{o.signatureClient && (<div className="mt-2 border-t border-slate-100 pt-2 text-center text-slate-900"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Receiver Signature</p><img src={o.signatureClient} alt="Sig" className="h-8 mx-auto object-contain opacity-60" /></div>)}</div>
+            ))}
+        </div>
+    </div>
+  );
+}
+
+function ListPumps({ pumps, readOnly }: { pumps: Pump[], readOnly?: boolean }) {
+  const remove = async(id: string) => { if(confirm("Permanently delete equipment?")) await deleteDoc(doc(db,'pumps',id)); };
+  return (
+    <div className="space-y-3 pb-20 animate-in fade-in">
+        {pumps.map((p: Pump) => (
+          <div key={p.id} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm mb-3">
+            <div><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">S/N: {p.code}</p><p className="font-bold text-slate-800">{p.brand || 'No Brand'}</p><span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-lg mt-1 inline-block ${p.status === 'with_driver' ? 'bg-blue-100 text-blue-600' : p.status === 'with_client' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>{p.status.replace('_', ' ')}</span></div>
+            {!readOnly && <button onClick={() => remove(p.id)} className="text-slate-300 p-2 transition-colors hover:text-red-500"><Trash2 className="w-4 h-4"/></button>}
+          </div>
+        ))}
+    </div>
+  );
+}
 
 function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, pharmacyId, allPumps, drivers, onOpenManual }: any) {
   const [section, setSection] = useState<'menu'|'add_pump'|'list_pumps'|'add_client'|'list_clients'|'create_delivery'|'staff'|'history'|'receive_returns'>('menu');
-  
-  // LOGICA DE NOTIFICACIONES (BADGES)
   const pendingDispatchCount = orders.filter((o: Order) => o.status === 'ready').length;
   const pendingReturnsFromDrivers = allPumps.filter((p: Pump) => p.status === 'with_driver' && p.pharmacyId === pharmacyId).length;
 
@@ -245,33 +284,15 @@ function PharmacyAdminView({ orders, pumps, clients, staff, onLogout, user, phar
   );
 }
 
-/* ==========================================================================
-   6. FORMS & UTILS
-   ========================================================================== */
-
 function AddPumpForm({ onFinish, pharmacyId }: any) {
   const [f, setF] = useState({ code: '', brand: '', model: '' }); const [msg, setMsg] = useState("");
   const save = async () => { if (!f.code) return; const dateStr = new Date().toLocaleDateString('en-US'); await addDoc(collection(db, 'pumps'), { ...f, status: 'available', lastReview: dateStr, pharmacyId }); setMsg(`S/N ${f.code} saved`); setF({ code: '', brand: '', model: '' }); setTimeout(() => setMsg(""), 3000); };
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4">
-      <div className="flex justify-between items-center"><h3 className="font-black text-xl italic uppercase text-slate-900">New Asset</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
+      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">New Asset</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
       {msg && <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl text-center font-bold text-xs">{msg}</div>}
       <div className="space-y-4 bg-white p-6 rounded-4xl border border-slate-100 shadow-sm text-slate-900"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold focus:border-indigo-500" placeholder="Serial Number (S/N)" value={f.code} onChange={e=>setF({...f, code: e.target.value})} /><div className="grid grid-cols-2 gap-2"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm" placeholder="Brand" value={f.brand} onChange={e=>setF({...f, brand: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-sm" placeholder="Model" value={f.model} onChange={e=>setF({...f, model: e.target.value})} /></div></div>
-      <button onClick={save} className="w-full bg-[#0f172a] text-white py-5 rounded-4xl font-black uppercase text-xs active:scale-95 text-white">Save Equipment</button>
-    </div>
-  );
-}
-
-function ListPumps({ pumps, readOnly }: { pumps: Pump[], readOnly?: boolean }) {
-  const remove = async(id: string) => { if(confirm("Permanently delete equipment?")) await deleteDoc(doc(db,'pumps',id)); };
-  return (
-    <div className="space-y-3 pb-20 animate-in fade-in">
-        {pumps.map((p: Pump) => (
-          <div key={p.id} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm mb-3">
-            <div><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">S/N: {p.code}</p><p className="font-bold text-slate-800">{p.brand || 'No Brand'}</p><span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-lg mt-1 inline-block ${p.status === 'with_driver' ? 'bg-blue-100 text-blue-600' : p.status === 'with_client' ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>{p.status.replace('_', ' ')}</span></div>
-            {!readOnly && <button onClick={() => remove(p.id)} className="text-slate-300 p-2 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>}
-          </div>
-        ))}
+      <button onClick={save} className="w-full bg-[#0f172a] text-white py-5 rounded-4xl font-black uppercase text-xs active:scale-95 text-white shadow-indigo-500/20">Save Asset</button>
     </div>
   );
 }
@@ -281,10 +302,10 @@ function AddClientForm({ onFinish, pharmacyId, user }: any) {
   const save = async () => { if (!f.name) return; await addDoc(collection(db, 'clients'), { ...f, pharmacyId, country: user.country || 'EC' }); setMsg(`Patient ${f.name} saved`); setF({ name: '', email: '', address: '', city: '', state: '' }); setTimeout(() => setMsg(""), 3000); };
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 text-slate-900">
-      <div className="flex justify-between items-center"><h3 className="font-black text-xl italic uppercase tracking-tighter text-slate-900">New Patient</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
+      <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase tracking-tighter text-slate-900">New Patient</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
       {msg && <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl text-center font-bold text-xs">{msg}</div>}
-      <div className="bg-white p-6 rounded-4xl border border-slate-100 space-y-4 shadow-sm"><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Full Legal Name" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Patient Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><div className="grid grid-cols-2 gap-2"><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Home Address" value={f.address} onChange={e=>setF({...f, address: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="City" value={f.city} onChange={e=>setF({...f, city: e.target.value})} /></div></div>
-      <button onClick={save} className="w-full bg-emerald-600 text-slate-900 py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 text-white shadow-emerald-500/20">Register Profile</button>
+      <div className="bg-white p-6 rounded-4xl border border-slate-100 space-y-4 shadow-sm text-slate-900"><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Full Legal Name" value={f.name} onChange={e=>setF({...f, name: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Patient Email" value={f.email} onChange={e=>setF({...f, email: e.target.value})} /><div className="grid grid-cols-2 gap-2"><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="Home Address" value={f.address} onChange={e=>setF({...f, address: e.target.value})} /><input className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" placeholder="City" value={f.city} onChange={e=>setF({...f, city: e.target.value})} /></div></div>
+      <button onClick={save} className="w-full bg-emerald-600 text-slate-900 py-5 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 text-white">Register Profile</button>
     </div>
   );
 }
@@ -294,7 +315,7 @@ function ListClients({ clients, readOnly }: { clients: Client[], readOnly?: bool
   return (
     <div className="space-y-4 pb-20 animate-in fade-in">
         {clients.map((c: Client) => (
-          <div key={c.id} className="bg-white p-6 rounded-3xl border flex flex-col gap-1 shadow-sm relative border-slate-100">
+          <div key={c.id} className="bg-white p-6 rounded-3xl border flex flex-col gap-1 shadow-sm relative border-slate-100 text-slate-900">
             {!readOnly && <button onClick={() => del(c.id)} className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
             <h4 className="font-black text-slate-800 text-lg">{c.name}</h4><p className="text-xs text-slate-400 flex items-center gap-1"><Mail className="w-3 h-3" /> {c.email}</p><p className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.address}, {c.city}</p>
           </div>
@@ -309,9 +330,9 @@ function StaffManager({ staff, pharmacyId }: any) {
   return (
     <div className="space-y-6 animate-in fade-in text-slate-900"> 
       {p ? (
-        <div className="bg-emerald-500 text-white p-8 rounded-4xl text-center shadow-lg"><p className="font-bold mb-2 uppercase tracking-widest text-white">STAFF ACCESS PIN:</p><p className="text-6xl font-black">{p}</p><button onClick={()=>setP("")} className="mt-6 text-xs underline text-white">Register another member</button></div>
+        <div className="bg-emerald-500 text-white p-8 rounded-4xl text-center shadow-lg"><p className="font-bold mb-2 uppercase tracking-widest text-white">STAFF ACCESS PIN:</p><p className="text-6xl font-black text-white">{p}</p><button onClick={()=>setP("")} className="mt-6 text-xs underline text-white">Register another member</button></div>
       ) : (
-        <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-4"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold text-slate-900" placeholder="Full Staff Name" onChange={e=>setF({...f, name: e.target.value})} /><SignaturePad onSave={setS} label="Employee Signature" /><button onClick={create} disabled={!s} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs disabled:opacity-50 text-white shadow-slate-900/10">Generate Access PIN</button></div>
+        <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-4 text-slate-900"><input className="w-full bg-slate-50 p-4 rounded-2xl outline-none font-bold" placeholder="Full Staff Name" onChange={e=>setF({...f, name: e.target.value})} /><SignaturePad onSave={setS} label="Employee Signature" /><button onClick={create} disabled={!s} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs disabled:opacity-50 text-white shadow-slate-900/10">Generate Access PIN</button></div>
       )}
       <div className="space-y-2"><p className="text-[10px] font-black text-slate-400 uppercase ml-2">Registered Staff</p>{staff.map((s: any) => (<div key={s.id} className="p-4 bg-white rounded-2xl border border-slate-100 flex justify-between"><span className="font-bold text-xs">{s.name}</span><span className="text-[10px] text-slate-400">PIN: ****</span></div>))}</div>
     </div>
@@ -332,7 +353,7 @@ function CreateDeliveryForm({ clients, pumps, onFinish, user, pharmacyId }: any)
       <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 space-y-6 text-slate-900"><SearchableSelect label="1. Select Patient" options={clients.map((c:any)=>({label:c.name, value:c.id}))} value={cId} onChange={setCId} />
         {debts.length > 0 && (<div className="bg-red-50 p-4 rounded-2xl border border-red-100 animate-pulse"><p className="text-[10px] font-black text-red-600 mb-2 uppercase flex items-center gap-1 text-red-600"><AlertTriangle className="w-3 h-3"/> UNRETURNED ASSETS AT HOME:</p><div className="flex flex-wrap gap-1 text-slate-900">{debts.map((p: Pump) => <span key={p.id} className="text-[10px] bg-white px-2 py-1 rounded font-mono font-bold text-red-700 border border-red-200 text-red-700">{p.code}</span>)}</div></div>)}
         <SearchableSelect label="2. Assign Delivery Items" options={pumps.filter((p:Pump)=>p.status==='available'&&!sP.find(x=>x.id===p.id)).map((p:Pump)=>({label:p.code, value:p.id}))} value="" onChange={add} />
-        {sP.length > 0 && (<div className="space-y-2 text-slate-900">{sP.map((p: Pump) => (<div key={p.id} className="flex justify-between items-center p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-slate-900"><div><p className="font-black text-xs uppercase opacity-70">S/N: {p.code}</p></div><button onClick={()=>setSP(sP.filter(x=>x.id!==p.id))} className="text-red-500 hover:bg-red-50 p-1 rounded-full text-red-500"><XCircle className="w-5 h-5 text-red-500"/></button></div>))}</div>)}
+        {sP.length > 0 && (<div className="space-y-2 text-slate-900">{sP.map((p: Pump) => (<div key={p.id} className="flex justify-between items-center p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-slate-900"><div><p className="font-black text-xs uppercase opacity-70">S/N: {p.code}</p></div><button onClick={()=>setSP(sP.filter(x=>x.id!==p.id))} className="text-red-500 hover:bg-red-50 p-1 rounded-full text-red-500"><XCircle className="w-5 h-5"/></button></div>))}</div>)}
       </div>
       <button onClick={create} disabled={!cId || sP.length === 0} className="w-full bg-[#0f172a] text-white py-6 rounded-4xl font-black uppercase text-xs shadow-xl active:scale-95 text-white shadow-slate-900/10">Initialize Dispatch</button>
     </div>
@@ -351,29 +372,77 @@ function ReturnPumpsForm({ drivers, pumps, onFinish, pharmacyId }: any) {
     };
     return (
         <div className="space-y-6 p-4 animate-in zoom-in-95 text-slate-900">
-            <div className="flex justify-between items-center text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">Inventory Reception</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
+            <div className="flex justify-between items-center text-slate-900 text-slate-900"><h3 className="font-black text-xl italic uppercase text-slate-900">Inventory Reception</h3><button onClick={onFinish} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500 text-slate-500">Back</button></div>
             <div className="bg-white p-6 rounded-4xl shadow-lg border border-slate-100 space-y-6 text-slate-900">
                 <SearchableSelect label="1. Select Returning Driver" options={indebtedDrivers.map((d:Employee)=>({label:d.name, value:d.id}))} value={driverId} onChange={(val: string) => { setDriverId(val); setSelectedPumps([]); }} />
-                {driverId && driverPumps.length > 0 && (<div className="space-y-2 text-slate-900"><p className="text-[10px] font-black text-slate-400 uppercase ml-2">Equipment in driver possession</p>{driverPumps.map((p: Pump) => (<div key={p.id} onClick={() => setSelectedPumps(selectedPumps.includes(p.id) ? selectedPumps.filter(i=>i!==p.id) : [...selectedPumps, p.id])} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedPumps.includes(p.id) ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100'}`}><div><p className="font-black text-slate-900 text-sm">S/N: {p.code}</p></div>{selectedPumps.includes(p.id) && <CheckCircle className="w-5 h-5 text-emerald-500" />}</div>))}</div>)}
+                {driverId && driverPumps.length > 0 && (<div className="space-y-2 text-slate-900"><p className="text-[10px] font-black text-slate-400 uppercase ml-2">Equipment in driver possession</p>{driverPumps.map((p: Pump) => (<div key={p.id} onClick={() => setSelectedPumps(selectedPumps.includes(p.id) ? selectedPumps.filter(i=>i!==p.id) : [...selectedPumps, p.id])} className={`flex justify-between items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedPumps.includes(p.id) ? 'border-emerald-500 bg-emerald-50 text-emerald-500' : 'border-slate-100'}`}><div><p className="font-black text-slate-900 text-sm">S/N: {p.code}</p></div>{selectedPumps.includes(p.id) && <CheckCircle className="w-5 h-5 text-emerald-500" />}</div>))}</div>)}
                 {selectedPumps.length > 0 && (<div className="space-y-4 pt-4 border-t border-slate-100 text-slate-900"><SignaturePad onSave={setSignDriver} label="Driver Handover Signature" /><SignaturePad onSave={setSignStaff} label="Staff Receipt Signature" /></div>)}
             </div>
-            <button onClick={processReturn} disabled={loading || !signDriver || !signStaff || selectedPumps.length === 0} className="w-full bg-[#10b981] text-slate-900 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 disabled:opacity-50 text-white shadow-emerald-500/20">Confirm Handover</button>
+            <button onClick={processReturn} disabled={loading || !signDriver || !signStaff || selectedPumps.length === 0} className="w-full bg-[#10b981] text-slate-900 py-5 rounded-4xl font-black uppercase text-xs active:scale-95 disabled:opacity-50 shadow-xl transition-all text-white shadow-emerald-500/20">Confirm Handover</button>
         </div>
     );
 }
 
-function HistoryLogView({ orders, onBack }: any) {
-  const hist = (orders || []).filter((o: any) => o.status === 'delivered' || o.status === 'cancelled').sort((a: any, b: any) => b.createdAt?.seconds - a.createdAt?.seconds);
+function DriverApp({ orders, allPumps, user, onLogout, myCustodyPumps, onOpenManual }: any) {
+  const activeOrder = orders.find((o: Order) => o.claimedBy === user.id && o.status !== 'delivered');
+  const claimOrder = async (id: string) => { await updateDoc(doc(db, 'deliveries', id), { status: 'claimed', claimedBy: user.id, claimedAt: serverTimestamp() }); };
+  if (activeOrder) return <DriverWorkflow order={activeOrder} allPumps={allPumps} user={user} pharmacyId={activeOrder.pharmacyId} />;
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900">
-        <div className="p-6 flex justify-between items-center bg-white border-b sticky top-0 z-20 text-slate-900"><h2 className="text-xl font-black italic uppercase text-slate-900">History Log</h2><button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-500">Back</button></div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 text-slate-900">
-            {hist.length === 0 ? <p className="text-center py-20 opacity-30 uppercase text-xs font-black">History empty</p> : hist.map((o: any) => (
-                <div key={o.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 animate-in text-slate-900"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest text-indigo-600">#{o.orderCode}</span><span className={`text-[8px] px-2 py-1 rounded font-black uppercase ${o.status === 'delivered' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>{o.status}</span></div><h4 className="font-bold text-slate-800">{o.clientName}</h4><p className="text-[10px] text-slate-400 mb-3 uppercase text-slate-400">{o.address}</p>{o.signatureClient && (<div className="mt-2 border-t border-slate-100 pt-2 text-center text-slate-900"><p className="text-[8px] font-black text-slate-300 uppercase mb-1">Receiver Signature</p><img src={o.signatureClient} alt="Sig" className="h-8 mx-auto object-contain opacity-60" /></div>)}</div>
-            ))}
-        </div>
+        <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm"><div><h2 className="text-2xl font-black italic text-[#0f172a] uppercase tracking-tighter">{user.city || 'Fleet'}</h2><p className="text-[10px] font-black text-indigo-600 mt-1 uppercase tracking-widest">{user.name}</p></div><div className="flex gap-2"><button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><BookOpen className="w-6 h-6 text-indigo-600"/></button><button onClick={onLogout} className="p-4 bg-slate-100 rounded-2xl text-slate-900 transition-colors active:bg-slate-200 text-slate-950"><LogOut/></button></div></header>
+        {myCustodyPumps.length > 0 && (<div className="mx-6 mt-4 bg-red-500 p-5 rounded-3xl text-white shadow-lg animate-pulse text-white text-white"><div className="flex items-center gap-2 mb-2 text-white"><AlertTriangle/><span className="font-black text-xs uppercase tracking-widest">RETURN REQUIRED</span></div><div className="flex flex-wrap gap-2 text-white">{myCustodyPumps.map((p: Pump) => <span key={p.id} className="text-[9px] bg-white text-red-600 px-2 py-1 rounded font-black text-red-600">{p.code}</span>)}</div></div>)}
+        <div className="p-6 space-y-4 flex-1 overflow-y-auto pb-20 text-slate-900"> {orders.filter((o:Order)=>o.status==='ready').length === 0 ? <div className="text-center py-20 opacity-30 font-black text-xs uppercase tracking-widest">No active routes available</div> : orders.filter((o:Order)=>o.status==='ready').map((o: Order) => (<div key={o.id} className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 animate-in slide-in-from-bottom-8 duration-500 text-slate-900"><div className="flex justify-between mb-6 text-slate-900"><span className="text-[10px] font-black text-indigo-600 tracking-widest uppercase text-indigo-600">#{o.orderCode}</span><span className="bg-slate-100 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter text-slate-600">READY</span></div><h3 className="text-2xl font-black text-slate-800 mb-2 leading-none text-slate-950">{o.clientName}</h3><p className="text-xs text-slate-500 mb-8 flex items-center gap-2 font-bold uppercase text-slate-400"><MapPin className="w-4 h-4 text-emerald-500"/> {o.address}</p><button onClick={()=>claimOrder(o.id)} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all shadow-xl text-white">Accept Dispatch</button></div>))}</div>
     </div>
   );
+}
+
+function DriverWorkflow({ order, allPumps, user, pharmacyId }: any) {
+    const [step, setStep] = useState(order.status==='picked_up'?'delivery':'pickup'); 
+    const [s1, setS1] = useState(""); const [s2, setS2] = useState(""); const [dS, setDS] = useState<Record<string,any>>({});
+    const pR = allPumps.filter((p: Pump) => p.status === 'with_driver' && p.currentDriverId === user.id && p.pharmacyId === pharmacyId);
+    const cD = allPumps.filter((p: Pump) => p.currentClientId === order.clientId && p.status === 'with_client');
+    const action = async () => {
+        const b = writeBatch(db);
+        if (step === 'pickup') {
+            if (pR.length > 0) pR.forEach((p: Pump) => b.update(doc(db, 'pumps', p.id), { status: 'available', currentDriverId: null }));
+            b.update(doc(db, 'deliveries', order.id), { status: 'picked_up', signatureDriverPickup: s1 });
+            order.pumps.forEach((p: any) => b.update(doc(db, 'pumps', p.pumpId), { status: 'with_driver', currentDriverId: user.id }));
+            await b.commit(); setStep('delivery'); setS1("");
+        } else {
+            const retIds = cD.filter((d: Pump) => dS[d.id]==='collected').map((d: Pump) => d.id);
+            b.update(doc(db, 'deliveries', order.id), { status: 'delivered', signatureDriverDelivery: s1, signatureClient: s2, returnedPumpIds: retIds });
+            order.pumps.forEach((p: any) => b.update(doc(db, 'pumps', p.pumpId), { status: 'with_client', currentClientId: order.clientId, currentDriverId: null, deliveredBy: user.name }));
+            retIds.forEach((id: string) => b.update(doc(db, 'pumps', id), { status: 'with_driver', currentClientId: null, currentDriverId: user.id }));
+            await b.commit(); setS1(""); setS2("");
+        }
+    };
+    return (
+      <div className="flex-1 flex flex-col bg-white text-slate-900 text-slate-900 text-slate-900">
+        <div className="bg-[#0f172a] p-10 pt-16 rounded-b-4xl text-white shadow-2xl text-white">
+          <h2 className="text-3xl font-black italic tracking-tighter text-white">#{order.orderCode}</h2>
+          <p className="text-[10px] font-black text-emerald-400 mt-2 tracking-widest uppercase text-emerald-400">{step.toUpperCase()}</p>
+        </div>
+        <div className="flex-1 p-8 space-y-8 overflow-y-auto text-slate-900 text-slate-900">
+          {step === 'pickup' ? (
+            <div className="space-y-6 text-slate-900">
+              {pR.length > 0 && (<div className="bg-amber-100 p-6 rounded-3xl border-2 border-amber-300 animate-pulse text-amber-700"><p className="text-xs font-black mb-3 uppercase flex items-center gap-2 text-amber-700"><AlertTriangle/> Return Debt to Office</p><div className="flex flex-wrap gap-2 text-slate-900">{pR.map((p: Pump)=>(<div key={p.id} className="bg-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm">S/N: {p.code}</div>))}</div></div>)}
+              <div className="bg-slate-50 p-6 rounded-3xl shadow-inner text-slate-900"><p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">Handover Checklist:</p>{order.pumps.map((p:any)=><p key={p.code} className="font-black text-2xl text-[#0f172a] mb-1">S/N: {p.code}</p>)}</div>
+              <SignaturePad onSave={setS1} label="Office Handover Receipt Signature" />
+            </div>
+          ) : (
+            <div className="space-y-6 text-slate-900">
+              <div className="p-8 bg-[#0f172a] rounded-4xl text-white shadow-xl text-white text-white">
+                <h3 className="text-2xl font-black mb-1 leading-tight text-white">{order.clientName}</h3>
+                <p className="text-sm opacity-60 flex items-center gap-2 font-bold text-white/50"><MapPin className="w-4 h-4 text-white"/> {order.address}</p>
+              </div>
+              {cD.length > 0 && (<div className="space-y-4">{cD.map((p: Pump)=>(<div key={p.id} className="p-5 rounded-3xl border-2 flex justify-between items-center bg-white shadow-sm border-slate-100 text-slate-900"><div><p className="font-black text-lg text-indigo-950">#{p.code}</p><p className="text-[10px] text-red-500 font-black uppercase tracking-tighter">Collect from patient</p></div><button onClick={()=>setDS({...dS, [p.id]:'collected'})} className={`p-4 rounded-2xl transition-all ${dS[p.id]==='collected'?'bg-emerald-500 text-white scale-110 shadow-lg shadow-emerald-500/30 text-white':'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}><CheckCircle/></button></div>))}</div>)}
+              <div className="space-y-4 pt-4 text-slate-900"><SignaturePad onSave={setS1} label="Proof of Delivery Signature" /><SignaturePad onSave={setS2} label="Patient Receipt Signature" /></div>
+            </div>
+          )}
+        </div>
+        <div className="p-6 border-t bg-white text-slate-900 text-slate-900"><button onClick={action} disabled={!s1 || (step==='delivery'&&!s2)} className="w-full bg-[#10b981] text-slate-900 py-6 rounded-4xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all shadow-xl text-slate-950">Confirm Protocol Step</button></div>
+      </div>
+    );
 }
 
 /* ==========================================================================
@@ -436,19 +505,6 @@ function RegisterView({ onBack, allAdmins }: { onBack: () => void, allAdmins: Em
             const docRef = await addDoc(collection(db, col), { ...form, pin: pinVal, signature: sign || "", createdAt: serverTimestamp() });
             if (form.role === 'pharmacy_admin') await updateDoc(docRef, { pharmacyId: docRef.id });
             
-            // EMAIL NOTIFICATION API CALL
-            try {
-              await fetch("/api/send-email", { 
-                method: "POST", 
-                headers: { "Content-Type": "application/json" }, 
-                body: JSON.stringify({ 
-                  to: form.email, 
-                  subject: "Dispatcher Pro - Your Access PIN", 
-                  html: `<h3>Registration Successful</h3><p>Welcome ${form.name}. Your access PIN is: <b>${pinVal}</b></p>` 
-                }) 
-              });
-            } catch (e) { console.warn("Email API error:", e); }
-            
             setNewPin(pinVal);
         } catch (e: any) { alert(e.message); } setLoad(false);
     };
@@ -482,72 +538,6 @@ function RegisterView({ onBack, allAdmins }: { onBack: () => void, allAdmins: Em
                 <button onClick={register} disabled={load || ((form.role==='driver' || form.role==='pharmacy_staff') && !sign)} className="w-full bg-emerald-600 py-6 rounded-4xl font-black uppercase text-sm mt-4 shadow-xl active:scale-95 transition-all disabled:opacity-50 text-slate-950 shadow-emerald-500/30 text-slate-950">{load ? "Processing..." : "Confirm Activation"}</button>
             </div>
         </div>
-    );
-}
-
-/* ==========================================================================
-   8. DRIVER MODULES
-   ========================================================================== */
-
-function DriverApp({ orders, allPumps, user, onLogout, myCustodyPumps, onOpenManual }: any) {
-  const activeOrder = orders.find((o: Order) => o.claimedBy === user.id && o.status !== 'delivered');
-  const claimOrder = async (id: string) => { await updateDoc(doc(db, 'deliveries', id), { status: 'claimed', claimedBy: user.id, claimedAt: serverTimestamp() }); };
-  if (activeOrder) return <DriverWorkflow order={activeOrder} allPumps={allPumps} user={user} pharmacyId={activeOrder.pharmacyId} />;
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 text-slate-900">
-        <header className="p-8 pt-12 bg-white border-b border-slate-100 flex justify-between items-end shadow-sm"><div><h2 className="text-2xl font-black italic text-[#0f172a] uppercase tracking-tighter text-slate-900">{user.city || 'Fleet'}</h2><p className="text-[10px] font-black text-indigo-600 mt-1 uppercase tracking-widest text-indigo-600">{user.name}</p></div><div className="flex gap-2"><button onClick={onOpenManual} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl"><BookOpen className="w-6 h-6 text-indigo-600"/></button><button onClick={onLogout} className="p-4 bg-slate-100 rounded-2xl text-slate-900 transition-colors active:bg-slate-200 text-slate-950"><LogOut/></button></div></header>
-        {myCustodyPumps.length > 0 && (<div className="mx-6 mt-4 bg-red-500 p-5 rounded-3xl text-white shadow-lg animate-pulse text-white text-white"><div className="flex items-center gap-2 mb-2 text-white"><AlertTriangle/><span className="font-black text-xs uppercase tracking-widest">RETURN REQUIRED</span></div><div className="flex flex-wrap gap-2 text-white">{myCustodyPumps.map((p: Pump) => <span key={p.id} className="text-[9px] bg-white text-red-600 px-2 py-1 rounded font-black text-red-600">{p.code}</span>)}</div></div>)}
-        <div className="p-6 space-y-4 flex-1 overflow-y-auto pb-20 text-slate-900"> {orders.filter((o:Order)=>o.status==='ready').length === 0 ? <div className="text-center py-20 opacity-30 font-black text-xs uppercase tracking-widest">No active routes available</div> : orders.filter((o:Order)=>o.status==='ready').map((o: Order) => (<div key={o.id} className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100 animate-in slide-in-from-bottom-8 duration-500 text-slate-900"><div className="flex justify-between mb-6"><span className="text-[10px] font-black text-indigo-600 tracking-widest uppercase text-indigo-600 text-indigo-600">#{o.orderCode}</span><span className="bg-slate-100 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter text-slate-600">READY</span></div><h3 className="text-2xl font-black text-slate-800 mb-2 leading-none text-slate-950">{o.clientName}</h3><p className="text-xs text-slate-500 mb-8 flex items-center gap-2 font-bold uppercase text-slate-400"><MapPin className="w-4 h-4 text-emerald-500"/> {o.address}</p><button onClick={()=>claimOrder(o.id)} className="w-full bg-[#0f172a] text-white py-5 rounded-2xl font-black uppercase text-xs active:scale-95 transition-all shadow-xl text-white">Accept Dispatch</button></div>))}</div>
-    </div>
-  );
-}
-
-function DriverWorkflow({ order, allPumps, user, pharmacyId }: any) {
-    const [step, setStep] = useState(order.status==='picked_up'?'delivery':'pickup'); 
-    const [s1, setS1] = useState(""); const [s2, setS2] = useState(""); const [dS, setDS] = useState<Record<string,any>>({});
-    const pR = allPumps.filter((p: Pump) => p.status === 'with_driver' && p.currentDriverId === user.id && p.pharmacyId === pharmacyId);
-    const cD = allPumps.filter((p: Pump) => p.currentClientId === order.clientId && p.status === 'with_client');
-    const action = async () => {
-        const b = writeBatch(db);
-        if (step === 'pickup') {
-            if (pR.length > 0) pR.forEach((p: Pump) => b.update(doc(db, 'pumps', p.id), { status: 'available', currentDriverId: null }));
-            b.update(doc(db, 'deliveries', order.id), { status: 'picked_up', signatureDriverPickup: s1 });
-            order.pumps.forEach((p: any) => b.update(doc(db, 'pumps', p.pumpId), { status: 'with_driver', currentDriverId: user.id }));
-            await b.commit(); setStep('delivery'); setS1("");
-        } else {
-            const retIds = cD.filter((d: Pump) => dS[d.id]==='collected').map((d: Pump) => d.id);
-            b.update(doc(db, 'deliveries', order.id), { status: 'delivered', signatureDriverDelivery: s1, signatureClient: s2, returnedPumpIds: retIds });
-            order.pumps.forEach((p: any) => b.update(doc(db, 'pumps', p.pumpId), { status: 'with_client', currentClientId: order.clientId, currentDriverId: null, deliveredBy: user.name }));
-            retIds.forEach((id: string) => b.update(doc(db, 'pumps', id), { status: 'with_driver', currentClientId: null, currentDriverId: user.id }));
-            await b.commit(); setS1(""); setS2("");
-        }
-    };
-    return (
-      <div className="flex-1 flex flex-col bg-white text-slate-900 text-slate-900 text-slate-900">
-        <div className="bg-[#0f172a] p-10 pt-16 rounded-b-4xl text-white shadow-2xl text-white">
-          <h2 className="text-3xl font-black italic tracking-tighter text-white">#{order.orderCode}</h2>
-          <p className="text-[10px] font-black text-emerald-400 mt-2 tracking-widest uppercase text-emerald-400">{step.toUpperCase()}</p>
-        </div>
-        <div className="flex-1 p-8 space-y-8 overflow-y-auto text-slate-900 text-slate-900">
-          {step === 'pickup' ? (
-            <div className="space-y-6 text-slate-900">
-              {pR.length > 0 && (<div className="bg-amber-100 p-6 rounded-3xl border-2 border-amber-300 animate-pulse text-amber-700"><p className="text-xs font-black mb-3 uppercase flex items-center gap-2"><AlertTriangle/> Return Debt to Office</p><div className="flex flex-wrap gap-2 text-slate-900">{pR.map((p: Pump)=>(<div key={p.id} className="bg-white px-3 py-1 rounded-lg text-xs font-bold shadow-sm">S/N: {p.code}</div>))}</div></div>)}
-              <div className="bg-slate-50 p-6 rounded-3xl shadow-inner text-slate-900"><p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest">Handover Checklist:</p>{order.pumps.map((p:any)=><p key={p.code} className="font-black text-2xl text-[#0f172a] mb-1">S/N: {p.code}</p>)}</div>
-              <SignaturePad onSave={setS1} label="Office Handover Receipt Signature" />
-            </div>
-          ) : (
-            <div className="space-y-6 text-slate-900">
-              <div className="p-8 bg-[#0f172a] rounded-4xl text-white shadow-xl text-white">
-                <h3 className="text-2xl font-black mb-1 leading-tight text-white">{order.clientName}</h3>
-                <p className="text-sm opacity-60 flex items-center gap-2 font-bold text-white/50"><MapPin className="w-4 h-4 text-white"/> {order.address}</p>
-              </div>
-              {cD.length > 0 && (<div className="space-y-4">{cD.map((p: Pump)=>(<div key={p.id} className="p-5 rounded-3xl border-2 flex justify-between items-center bg-white shadow-sm border-slate-100 text-slate-900"><div><p className="font-black text-lg text-indigo-950">#{p.code}</p><p className="text-[10px] text-red-500 font-black uppercase tracking-tighter">Collect from patient</p></div><button onClick={()=>setDS({...dS, [p.id]:'collected'})} className={`p-4 rounded-2xl transition-all ${dS[p.id]==='collected'?'bg-emerald-500 text-white scale-110 shadow-lg shadow-emerald-500/30 text-white':'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}><CheckCircle/></button></div>))}</div>)}
-              <div className="space-y-4 pt-4 text-slate-900"><SignaturePad onSave={setS1} label="Proof of Delivery Signature" /><SignaturePad onSave={setS2} label="Patient Receipt Signature" /></div>
-            </div>
-          )}
-        </div>
-        <div className="p-6 border-t bg-white"><button onClick={action} disabled={!s1 || (step==='delivery'&&!s2)} className="w-full bg-[#10b981] text-slate-900 py-6 rounded-4xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all shadow-xl text-slate-950">Confirm Protocol Step</button></div>
-      </div>
     );
 }
 
