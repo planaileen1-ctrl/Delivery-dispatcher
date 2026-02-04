@@ -4,12 +4,11 @@ import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
   title: "Delivery Dispatcher",
-  description: "Admin system for pharmacies and drivers",
+  description: "Global logistics dispatcher system",
 };
 
 export default function RootLayout({
@@ -19,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} antialiased`}>
+      <body className={inter.className}>
         {children}
       </body>
     </html>
