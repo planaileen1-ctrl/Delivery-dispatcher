@@ -14,7 +14,7 @@ import { db } from "@/lib/firebase";
 /* =========================
    SUPER ADMIN VIEW
    - Firestore raíz
-   - Envío de correo activo
+   - Envío de correo vía Resend (Vercel)
 ========================= */
 
 export default function SuperAdminView({
@@ -37,6 +37,7 @@ export default function SuperAdminView({
           id: d.id,
           ...d.data(),
         }));
+
         setLicenses(
           all.filter((l: any) => l.role === "license_code")
         );
@@ -62,7 +63,7 @@ export default function SuperAdminView({
       Math.random().toString(36).substring(2, 6).toUpperCase();
 
     try {
-      /* 1️⃣ Guardar licencia en Firestore */
+      /* 1️⃣ Guardar licencia */
       await addDoc(collection(db, "pharmacyEmployees"), {
         role: "license_code",
         code,
@@ -71,7 +72,7 @@ export default function SuperAdminView({
         createdAt: serverTimestamp(),
       });
 
-      /* 2️⃣ Enviar correo (FUNCIONA EN VERCEL) */
+      /* 2️⃣ Enviar correo (backend arma el email) */
       const res = await fetch("/api/send-email", {
         method: "POST",
         headers: {
@@ -84,6 +85,8 @@ export default function SuperAdminView({
       });
 
       if (!res.ok) {
+        const err = await res.json();
+        console.error("Email API error:", err);
         throw new Error("Email sending failed");
       }
 
