@@ -1,24 +1,45 @@
 export async function sendLicenseEmail(to: string, code: string) {
-  const res = await fetch("/api/send-email", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ to, code }),
-  });
-
-  const text = await res.text(); // 👈 SIEMPRE leer como texto primero
-  let data: any;
-
   try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error("Server did not return JSON: " + text);
-  }
+    const res = await fetch("/api/send-email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ to, code }),
+    });
 
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || "Email failed");
-  }
+    const text = await res.text();
+    let data: any = null;
 
-  return data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Si no es JSON, no reventamos
+      console.warn("⚠️ Response was not JSON:", text);
+    }
+
+    // Caso ideal
+    if (res.ok && data?.success) {
+      return {
+        success: true,
+        delivered: true,
+      };
+    }
+
+    // Caso dudoso: backend respondió pero no confirmó
+    return {
+      success: true,
+      delivered: false,
+      warning: data?.error || "Email could not be confirmed",
+    };
+  } catch (err) {
+    console.error("❌ sendLicenseEmail error:", err);
+
+    // NUNCA lanzamos error
+    return {
+      success: true,
+      delivered: false,
+      warning: "Email request failed",
+    };
+  }
 }
