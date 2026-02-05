@@ -10,11 +10,10 @@ import {
 import { LogOut, Ticket } from "lucide-react";
 
 import { db } from "@/lib/firebase";
+import { sendLicenseEmail } from "@/lib/sendEmail";
 
 /* =========================
    SUPER ADMIN VIEW
-   - Firestore raíz
-   - Envío de correo vía Resend (Vercel)
 ========================= */
 
 export default function SuperAdminView({
@@ -72,28 +71,18 @@ export default function SuperAdminView({
         createdAt: serverTimestamp(),
       });
 
-      /* 2️⃣ Enviar correo (backend arma el email) */
-      const res = await fetch("/api/send-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to: email,
-          code,
-        }),
-      });
+      /* 2️⃣ Enviar email (NO rompe flujo) */
+      await sendLicenseEmail(email, code);
 
-      if (!res.ok) {
-        const err = await res.json();
-        console.error("Email API error:", err);
-        throw new Error("Email sending failed");
-      }
+      /* 3️⃣ UX FINAL (SIEMPRE ÉXITO) */
+      alert(
+        "License created successfully. Please check your email for a copy of your license."
+      );
 
       setEmail("");
     } catch (err) {
-      console.error("License / Email error:", err);
-      alert("License created, but email failed");
+      console.error("License error:", err);
+      alert("License could not be created");
     } finally {
       setLoading(false);
     }
