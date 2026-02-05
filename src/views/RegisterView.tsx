@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { addDoc, updateDoc, getDocs, serverTimestamp } from "firebase/firestore";
+import { addDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { getCollectionRef, getDocRef } from "@/lib/firestore";
 import SignaturePad from "@/components/ui/SignaturePad";
 import { ChevronLeft } from "lucide-react";
@@ -25,10 +25,11 @@ export default function RegisterView({ onBack }: { onBack: () => void }) {
     setLoading(true);
 
     const pinCode = Math.floor(1000 + Math.random() * 9000).toString();
-    const col =
+
+    const collection =
       form.role === "driver" ? "deliveryDrivers" : "pharmacyEmployees";
 
-    const ref = await addDoc(getCollectionRef(col), {
+    const ref = await addDoc(getCollectionRef(collection), {
       ...form,
       pin: pinCode,
       signature,
@@ -36,19 +37,29 @@ export default function RegisterView({ onBack }: { onBack: () => void }) {
     });
 
     if (form.role === "pharmacy_admin") {
-      await updateDoc(getDocRef(col, ref.id), { pharmacyId: ref.id });
+      await updateDoc(getDocRef(collection, ref.id), {
+        pharmacyId: ref.id,
+      });
     }
 
     setPin(pinCode);
     setLoading(false);
   };
 
-  if (pin)
+  /* =========================
+     SUCCESS SCREEN
+  ========================= */
+  if (pin) {
     return (
       <div className="h-screen bg-[#0f172a] flex flex-col items-center justify-center text-white text-center p-8">
-        <h2 className="text-2xl font-black uppercase mb-4">SUCCESS</h2>
+        <h2 className="text-2xl font-black uppercase mb-4">
+          Registration Successful
+        </h2>
+
         <p className="text-xs uppercase mb-2">Your Access PIN</p>
+
         <p className="text-7xl font-black mb-8">{pin}</p>
+
         <button
           onClick={onBack}
           className="bg-white text-[#0f172a] py-5 rounded-3xl font-black uppercase text-xs w-full"
@@ -57,7 +68,11 @@ export default function RegisterView({ onBack }: { onBack: () => void }) {
         </button>
       </div>
     );
+  }
 
+  /* =========================
+     REGISTER FORM
+  ========================= */
   return (
     <div className="h-screen bg-[#0f172a] p-6 text-white flex flex-col">
       <button onClick={onBack} className="p-3 mb-4">
@@ -68,11 +83,14 @@ export default function RegisterView({ onBack }: { onBack: () => void }) {
         <input
           className="w-full p-4 rounded-xl bg-white text-slate-900 font-bold"
           placeholder="Full Name"
+          value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
+
         <input
           className="w-full p-4 rounded-xl bg-white text-slate-900 font-bold"
-          placeholder="Email"
+          placeholder="Email Address"
+          value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
         />
 
@@ -84,17 +102,20 @@ export default function RegisterView({ onBack }: { onBack: () => void }) {
           }
         >
           <option value="driver">Driver</option>
-          <option value="pharmacy_admin">Admin</option>
-          <option value="pharmacy_staff">Staff</option>
+          <option value="pharmacy_admin">Pharmacy Admin</option>
+          <option value="pharmacy_staff">Pharmacy Employee</option>
         </select>
 
-        <SignaturePad label="Identity Signature" onSave={setSignature} />
+        <SignaturePad
+          label="Identity Signature"
+          onSave={setSignature}
+        />
       </div>
 
       <button
         onClick={register}
         disabled={loading || !signature}
-        className="bg-emerald-600 py-5 rounded-3xl font-black uppercase text-xs mt-4"
+        className="bg-emerald-600 py-5 rounded-3xl font-black uppercase text-xs mt-4 disabled:opacity-50"
       >
         {loading ? "Saving..." : "Create Account"}
       </button>
