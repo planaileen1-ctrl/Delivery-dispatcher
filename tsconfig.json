@@ -1,44 +1,74 @@
 {
   "compilerOptions": {
+    /* ===============================
+       BASE
+    =============================== */
     "target": "ES2017",
     "lib": [
       "dom",
       "dom.iterable",
       "esnext"
     ],
+
+    /* ===============================
+       JS / TS
+    =============================== */
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
-    "esModuleInterop": true,
+    "incremental": true,
+    "isolatedModules": true,
+
+    /* ===============================
+       MODULE SYSTEM
+    =============================== */
     "module": "esnext",
     "moduleResolution": "bundler",
+    "esModuleInterop": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
+
+    /* ===============================
+       REACT / NEXT
+    =============================== */
     "jsx": "react-jsx",
-    "incremental": true,
-    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"
       }
     ],
+
+    /* ===============================
+       NODE (🔥 CLAVE PARA API ROUTES)
+    =============================== */
+    "types": ["node"],
+
+    /* ===============================
+       PATH ALIASES
+    =============================== */
+    "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "src/*"
-      ]
+      "@/*": ["src/*"]
     }
   },
+
+  /* ===============================
+     FILES INCLUDED
+  =============================== */
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "**/*.mts",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    ".next/dev/types/**/*.ts"
   ],
+
+  /* ===============================
+     FILES EXCLUDED
+  =============================== */
   "exclude": [
     "node_modules",
-    "functions"   // 🔥 CLAVE: evita que Vercel compile Firebase Functions
+    "functions"
   ]
 }
