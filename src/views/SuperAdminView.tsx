@@ -71,7 +71,7 @@ export default function SuperAdminView({
         createdAt: serverTimestamp(),
       });
 
-      /* 2️⃣ Enviar correo */
+      /* 2️⃣ Enviar correo (FUNCIONA EN VERCEL) */
       const res = await fetch("/api/send-email", {
         method: "POST",
         headers: {
@@ -79,20 +79,7 @@ export default function SuperAdminView({
         },
         body: JSON.stringify({
           to: email,
-          subject: "Dispatcher Pro – Pharmacy License",
-          html: `
-            <h2>Welcome to Dispatcher Pro</h2>
-            <p>Your pharmacy access license code is:</p>
-            <h3 style="letter-spacing:2px;">${code}</h3>
-            <p>
-              Go to the platform:
-              <br/>
-              <a href="http://localhost:3000">
-                http://localhost:3000
-              </a>
-            </p>
-            <p>If you have any questions, just reply to this email.</p>
-          `,
+          code,
         }),
       });
 

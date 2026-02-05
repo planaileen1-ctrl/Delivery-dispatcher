@@ -21,46 +21,21 @@ export async function POST(req: Request) {
       to,
       subject: "Your Dispatcher Pro License",
       html: `
-        <div style="font-family: Arial, sans-serif; padding:20px">
-          <h2>Dispatcher Pro</h2>
-
-          <p>Your pharmacy license has been created successfully.</p>
-
-          <p><strong>License Code:</strong></p>
-          <div style="font-size:18px;font-weight:bold;margin:12px 0">
-            ${code}
-          </div>
-
-          <p>Next steps:</p>
-          <ol>
-            <li>Go to the Dispatcher Pro portal</li>
-            <li>Select <strong>Create Account</strong></li>
-            <li>Enter this license code</li>
-          </ol>
-
-          <p>If you have any questions, contact support.</p>
-
-          <hr />
-          <small>Dispatcher Pro • Industrial Grade Logistics</small>
-        </div>
+        <h2>Dispatcher Pro</h2>
+        <p>Your license code:</p>
+        <strong>${code}</strong>
       `,
     });
 
     if (error) {
       console.error("❌ RESEND ERROR:", error);
-      return NextResponse.json(
-        { error: "Email failed" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error }, { status: 500 });
     }
 
     console.log("✅ EMAIL SENT VIA RESEND");
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("❌ SEND EMAIL ERROR:", err);
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
