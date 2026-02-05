@@ -1,54 +1,65 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const { to, subject, html } = await req.json();
+    const { to, code } = await req.json();
 
-    if (!to || !subject || !html) {
+    if (!to || !code) {
       return NextResponse.json(
-        { error: "Missing fields" },
+        { error: "Missing email or license code" },
         { status: 400 }
       );
     }
 
-    console.log("📨 SEND EMAIL ENDPOINT HIT");
-    console.log("➡️ TO:", to);
-    console.log("📧 USER:", process.env.EMAIL_USER);
-    console.log("🔐 PASS EXISTS:", !!process.env.EMAIL_PASS);
-    console.log("⏳ SENDING...");
+    const resend = new Resend(process.env.RESEND_API_KEY);
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-
-      // 🔥 ESTO SOLUCIONA EL ERROR
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    await transporter.sendMail({
-      from: `"Dispatcher Pro" <${process.env.EMAIL_USER}>`,
+    const { error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM!,
       to,
-      subject,
-      html,
+      subject: "Your Dispatcher Pro License",
+      html: `
+        <div style="font-family: Arial, sans-serif; padding:20px">
+          <h2>Dispatcher Pro</h2>
+
+          <p>Your pharmacy license has been created successfully.</p>
+
+          <p><strong>License Code:</strong></p>
+          <div style="font-size:18px;font-weight:bold;margin:12px 0">
+            ${code}
+          </div>
+
+          <p>Next steps:</p>
+          <ol>
+            <li>Go to the Dispatcher Pro portal</li>
+            <li>Select <strong>Create Account</strong></li>
+            <li>Enter this license code</li>
+          </ol>
+
+          <p>If you have any questions, contact support.</p>
+
+          <hr />
+          <small>Dispatcher Pro • Industrial Grade Logistics</small>
+        </div>
+      `,
     });
 
-    console.log("✅ EMAIL SENT");
+    if (error) {
+      console.error("❌ RESEND ERROR:", error);
+      return NextResponse.json(
+        { error: "Email failed" },
+        { status: 500 }
+      );
+    }
 
+    console.log("✅ EMAIL SENT VIA RESEND");
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error("❌ EMAIL ERROR FULL:", error);
+  } catch (err) {
+    console.error("❌ SEND EMAIL ERROR:", err);
     return NextResponse.json(
-      { error: error.message || "Email failed" },
+      { error: "Server error" },
       { status: 500 }
     );
   }
