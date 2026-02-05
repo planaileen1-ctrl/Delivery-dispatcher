@@ -5,37 +5,61 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const { to, code } = await req.json();
+    console.log("🔥 ROUTE.TS NUEVO EJECUTADO");
+
+    const body = await req.json();
+    const { to, code } = body;
 
     if (!to || !code) {
       return NextResponse.json(
-        { error: "Missing email or license code" },
+        { success: false, error: "Missing 'to' or 'code'" },
         { status: 400 }
+      );
+    }
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ RESEND_API_KEY missing");
+      return NextResponse.json(
+        { success: false, error: "Email service not configured" },
+        { status: 500 }
       );
     }
 
     const resend = new Resend(process.env.RESEND_API_KEY);
 
+    const from =
+      process.env.RESEND_FROM_EMAIL ??
+      "Dispatcher Pro <onboarding@resend.dev>";
+
+    console.log("📨 Sending email to:", to);
+
     const { error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM!,
+      from,
       to,
       subject: "Your Dispatcher Pro License",
       html: `
         <h2>Dispatcher Pro</h2>
         <p>Your license code:</p>
-        <strong>${code}</strong>
+        <h3>${code}</h3>
+        <p>Thank you for your purchase.</p>
       `,
     });
 
     if (error) {
       console.error("❌ RESEND ERROR:", error);
-      return NextResponse.json({ error }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Email delivery failed" },
+        { status: 500 }
+      );
     }
 
-    console.log("✅ EMAIL SENT VIA RESEND");
+    console.log("✅ EMAIL SENT TO:", to);
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("❌ SEND EMAIL ERROR:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Server error" },
+      { status: 500 }
+    );
   }
 }
