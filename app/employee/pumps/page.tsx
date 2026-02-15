@@ -57,6 +57,33 @@ type Pump = {
   createdAt: any;
 };
 
+function getNormalizedPumpStatus(pump: Pump) {
+  const rawStatus = String(pump.status || "AVAILABLE").trim().toUpperCase();
+  const inMaintenance = rawStatus === "IN_MAINTENANCE" || pump.maintenanceDue === true;
+  const isAvailable = rawStatus === "AVAILABLE" && pump.maintenanceDue !== true;
+  const isInUse = !inMaintenance && !isAvailable;
+
+  return {
+    rawStatus,
+    inMaintenance,
+    isAvailable,
+    isInUse,
+    displayStatus: inMaintenance ? "IN_MAINTENANCE" : rawStatus,
+  };
+}
+
+function getStatusBadgeClass(displayStatus: string) {
+  if (displayStatus === "IN_MAINTENANCE") {
+    return "text-amber-300 border-amber-500/40 bg-amber-500/10";
+  }
+
+  if (displayStatus === "AVAILABLE") {
+    return "text-emerald-300 border-emerald-500/40 bg-emerald-500/10";
+  }
+
+  return "text-cyan-300 border-cyan-500/40 bg-cyan-500/10";
+}
+
 export default function EmployeePumpsPage() {
   const router = useRouter();
 
@@ -84,7 +111,7 @@ export default function EmployeePumpsPage() {
   const [pumpNumber, setPumpNumber] = useState("");
   const [brand, setBrand] = useState("");
   const [pumps, setPumps] = useState<Pump[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"all" | "maintenance" | "available">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "maintenance" | "available" | "in_use">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -113,10 +140,19 @@ export default function EmployeePumpsPage() {
     }));
 
     const sorted = [...list].sort((a, b) => {
-      const aMaintenance = a.status === "IN_MAINTENANCE" || a.maintenanceDue === true;
-      const bMaintenance = b.status === "IN_MAINTENANCE" || b.maintenanceDue === true;
+      const aInfo = getNormalizedPumpStatus(a);
+      const bInfo = getNormalizedPumpStatus(b);
 
-      if (aMaintenance !== bMaintenance) return aMaintenance ? -1 : 1;
+      const getRank = (info: ReturnType<typeof getNormalizedPumpStatus>) => {
+        if (info.inMaintenance) return 0;
+        if (!info.isAvailable) return 1;
+        return 2;
+      };
+
+      const aRank = getRank(aInfo);
+      const bRank = getRank(bInfo);
+
+      if (aRank !== bRank) return aRank - bRank;
 
       return String(a.pumpNumber || "").localeCompare(String(b.pumpNumber || ""));
     });
@@ -173,11 +209,16 @@ export default function EmployeePumpsPage() {
   }
 
   const filteredPumps = pumps.filter((p) => {
-    const inMaintenance = p.status === "IN_MAINTENANCE" || p.maintenanceDue === true;
-    if (statusFilter === "maintenance") return inMaintenance;
-    if (statusFilter === "available") return !inMaintenance;
+    const statusInfo = getNormalizedPumpStatus(p);
+    if (statusFilter === "maintenance") return statusInfo.inMaintenance;
+    if (statusFilter === "available") return statusInfo.isAvailable;
+    if (statusFilter === "in_use") return statusInfo.isInUse;
     return true;
   });
+
+  const maintenanceCount = pumps.filter((p) => getNormalizedPumpStatus(p).inMaintenance).length;
+  const availableCount = pumps.filter((p) => getNormalizedPumpStatus(p).isAvailable).length;
+  const inUseCount = pumps.filter((p) => getNormalizedPumpStatus(p).isInUse).length;
 
   return (
     <main className="min-h-screen bg-[#020617] text-white flex justify-center py-10 px-4">
@@ -255,7 +296,7 @@ export default function EmployeePumpsPage() {
                   : "bg-black/30 border-white/10"
               }`}
             >
-              In Maintenance ({pumps.filter((p) => p.status === "IN_MAINTENANCE" || p.maintenanceDue === true).length})
+              In Maintenance ({maintenanceCount})
             </button>
             <button
               type="button"
@@ -266,7 +307,18 @@ export default function EmployeePumpsPage() {
                   : "bg-black/30 border-white/10"
               }`}
             >
-              Available ({pumps.filter((p) => !(p.status === "IN_MAINTENANCE" || p.maintenanceDue === true)).length})
+              Available ({availableCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("in_use")}
+              className={`text-xs px-3 py-1 rounded border ${
+                statusFilter === "in_use"
+                  ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-200"
+                  : "bg-black/30 border-white/10"
+              }`}
+            >
+              In Use ({inUseCount})
             </button>
           </div>
 
@@ -278,6 +330,9 @@ export default function EmployeePumpsPage() {
 
           <ul className="space-y-3">
             {filteredPumps.map((p) => (
+              (() => {
+                const statusInfo = getNormalizedPumpStatus(p);
+                return (
               <li
                 key={p.id}
                 className="border border-white/10 rounded p-4 flex justify-between items-start"
@@ -290,15 +345,9 @@ export default function EmployeePumpsPage() {
                   <p className="text-xs text-white/70">
                     Status:{" "}
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded border ${
-                        p.status === "IN_MAINTENANCE" || p.maintenanceDue
-                          ? "text-amber-300 border-amber-500/40 bg-amber-500/10"
-                          : "text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
-                      }`}
+                      className={`inline-flex items-center px-2 py-0.5 rounded border ${getStatusBadgeClass(statusInfo.displayStatus)}`}
                     >
-                      {p.status === "IN_MAINTENANCE" || p.maintenanceDue
-                        ? "IN_MAINTENANCE"
-                        : "AVAILABLE"}
+                      {statusInfo.displayStatus}
                     </span>
                   </p>
 
@@ -327,6 +376,8 @@ export default function EmployeePumpsPage() {
                   Delete
                 </button>
               </li>
+                );
+              })()
             ))}
           </ul>
         </div>
