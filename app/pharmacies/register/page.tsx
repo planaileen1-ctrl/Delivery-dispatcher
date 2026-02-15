@@ -67,6 +67,7 @@ export default function RegisterPharmacyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [generatedPin, setGeneratedPin] = useState<string | null>(null);
+  const [generatedSecurityPin, setGeneratedSecurityPin] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
 
   useEffect(() => {
@@ -99,6 +100,7 @@ export default function RegisterPharmacyPage() {
       }
 
       const pin = Math.floor(1000 + Math.random() * 9000).toString();
+      const securityPin6 = Math.floor(100000 + Math.random() * 900000).toString();
 
       await addDoc(collection(db, "pharmacies"), {
         licenseCode: form.licenseCode,
@@ -109,6 +111,7 @@ export default function RegisterPharmacyPage() {
         city: form.city,
         address: form.address, // ✅ SAVED
         pin,
+        securityPin6,
         active: true,
         createdAt: serverTimestamp(),
       });
@@ -120,14 +123,16 @@ export default function RegisterPharmacyPage() {
         html: `
           <p>Hello ${form.pharmacyName || ""},</p>
           <p>Your pharmacy registration is complete.</p>
-          <p><strong>Access PIN:</strong> ${pin}</p>
+          <p><strong>Employee Registration PIN (4 digits):</strong> ${pin}</p>
+          <p><strong>Pharmacy Security PIN (6 digits):</strong> ${securityPin6}</p>
           <p><strong>Registered:</strong> ${sentAt}</p>
           <p>Please keep this PIN secure.</p>
         `,
-        text: `Your pharmacy access PIN: ${pin}. Registered: ${sentAt}.`,
+        text: `Employee Registration PIN (4 digits): ${pin}. Pharmacy Security PIN (6 digits): ${securityPin6}. Registered: ${sentAt}.`,
       });
 
       setGeneratedPin(pin);
+      setGeneratedSecurityPin(securityPin6);
       setRegistered(true);
     } catch (err) {
       console.error(err);
@@ -138,18 +143,30 @@ export default function RegisterPharmacyPage() {
   }
 
   // ✅ CONFIRMATION SCREEN
-  if (registered && generatedPin) {
+  if (registered && generatedPin && generatedSecurityPin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#020617] text-white">
-        <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-xl p-8 text-center space-y-6">
+        <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-xl p-8 text-center space-y-5">
           <h1 className="text-2xl font-bold">PHARMACY REGISTERED</h1>
 
-          <p className="text-white/70">
-            THIS IS YOUR ACCESS PIN. SAVE IT SECURELY.
-          </p>
+          <p className="text-white/70">SAVE BOTH PINS SECURELY.</p>
 
-          <div className="text-4xl font-bold tracking-widest bg-black border border-white/20 rounded py-4">
-            {generatedPin}
+          <div className="text-left space-y-2">
+            <p className="text-xs text-emerald-300 font-bold tracking-wider">
+              4-DIGIT PIN (FOR EMPLOYEE REGISTRATION)
+            </p>
+            <div className="text-4xl font-bold tracking-widest bg-black border border-white/20 rounded py-4 text-center">
+              {generatedPin}
+            </div>
+          </div>
+
+          <div className="text-left space-y-2">
+            <p className="text-xs text-amber-300 font-bold tracking-wider">
+              6-DIGIT SECURITY PIN (FOR PHARMACY LOGIN)
+            </p>
+            <div className="text-4xl font-bold tracking-widest bg-black border border-amber-400/40 rounded py-4 text-center">
+              {generatedSecurityPin}
+            </div>
           </div>
 
           <button

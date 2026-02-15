@@ -10,10 +10,14 @@
     "cleanup:drivers:dry": "node scripts/remove-driver-vehicle-fields.js --dryRun",
     "cleanup:drivers": "node scripts/remove-driver-vehicle-fields.js",
     "cleanup:pumps:maintenance:dry": "node scripts/fix-pumps-maintenance-state.js --dryRun",
-    "cleanup:pumps:maintenance": "node scripts/fix-pumps-maintenance-state.js"
+    "cleanup:pumps:maintenance": "node scripts/fix-pumps-maintenance-state.js",
+    "migrate:pharmacies:pin6:dry": "node scripts/add-pharmacy-security-pin6.js --dryRun",
+    "migrate:pharmacies:pin6": "node scripts/add-pharmacy-security-pin6.js"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "firebase": "^12.9.0",
+    "firebase-admin": "^13.6.1",
     "jspdf": "^4.1.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",

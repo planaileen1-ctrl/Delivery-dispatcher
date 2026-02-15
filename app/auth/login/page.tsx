@@ -23,8 +23,19 @@ export default function LoginPage() {
 
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [isValidating, setIsValidating] = useState(false);
+  const [pendingPharmacy, setPendingPharmacy] = useState<{
+    id: string;
+    pharmacyName?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    securityPin6?: string;
+  } | null>(null);
   const validatingRef = useRef(false);
+
+  const requiredDigits = pendingPharmacy ? 6 : 4;
 
   useEffect(() => {
     void ensureAnonymousAuth();
@@ -42,23 +53,37 @@ export default function LoginPage() {
     if (value === "C") {
       setPin("");
       setError("");
+      setInfo("");
       return;
     }
 
     if (value === "OK") {
-      if (pin.length === 4) {
+      if (pin.length === requiredDigits) {
         validatePin(pin);
       }
       return;
     }
 
-    if (pin.length < 4) {
+    if (pin.length < requiredDigits) {
       const next = pin + value;
       setPin(next);
-      if (next.length === 4) {
+      if (next.length === requiredDigits) {
         validatePin(next);
       }
     }
+  };
+
+  const completePharmacyLogin = (pharmacyDocId: string, pharmacy: any) => {
+    localStorage.setItem("PHARMACY_ID", pharmacyDocId);
+    localStorage.setItem("PHARMACY_NAME", pharmacy.pharmacyName);
+    localStorage.setItem("PHARMACY_CITY", pharmacy.city || "");
+    localStorage.setItem("PHARMACY_STATE", pharmacy.state || "");
+    localStorage.setItem("PHARMACY_COUNTRY", pharmacy.country || "");
+
+    setPendingPharmacy(null);
+    setPin("");
+    setInfo("");
+    router.replace("/pharmacy/dashboard");
   };
 
   /* =====================
@@ -68,7 +93,7 @@ export default function LoginPage() {
   const validatePin = async (overridePin?: string) => {
     const activePin = overridePin || pin;
 
-    if (activePin.length !== 4 || validatingRef.current) {
+    if (activePin.length !== requiredDigits || validatingRef.current) {
       return;
     }
 
@@ -77,6 +102,17 @@ export default function LoginPage() {
 
     try {
       await ensureAnonymousAuth();
+
+      // 0️⃣ PHARMACY SECURITY STEP (2FA-like with 6-digit PIN)
+      if (pendingPharmacy) {
+        if (activePin === String(pendingPharmacy.securityPin6 || "")) {
+          completePharmacyLogin(pendingPharmacy.id, pendingPharmacy);
+        } else {
+          setError("INVALID SECURITY PIN");
+          setPin("");
+        }
+        return;
+      }
 
       // 1️⃣ SUPER ADMIN
       if (activePin === "1844") {
@@ -113,15 +149,25 @@ export default function LoginPage() {
       if (!pharmacySnap.empty) {
         const pharmacyDoc = pharmacySnap.docs[0];
         const pharmacy = pharmacyDoc.data();
+        const securityPin6 = String(pharmacy.securityPin6 || "");
+
+        if (securityPin6.length === 6) {
+          setPendingPharmacy({
+            id: pharmacyDoc.id,
+            pharmacyName: pharmacy.pharmacyName,
+            city: pharmacy.city || "",
+            state: pharmacy.state || "",
+            country: pharmacy.country || "",
+            securityPin6,
+          });
+          setPin("");
+          setError("");
+          setInfo("Enter pharmacy 6-digit security PIN");
+          return;
+        }
 
         // 🔐 BLIND PHARMACY CONTEXT
-        localStorage.setItem("PHARMACY_ID", pharmacyDoc.id);
-        localStorage.setItem("PHARMACY_NAME", pharmacy.pharmacyName);
-        localStorage.setItem("PHARMACY_CITY", pharmacy.city || "");
-        localStorage.setItem("PHARMACY_STATE", pharmacy.state || "");
-        localStorage.setItem("PHARMACY_COUNTRY", pharmacy.country || "");
-
-        router.replace("/pharmacy/dashboard");
+        completePharmacyLogin(pharmacyDoc.id, pharmacy);
         return;
       }
 
@@ -188,14 +234,23 @@ export default function LoginPage() {
         {/* TITLE */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-emerald-200 bg-clip-text text-transparent">
-            Sign In
+            {pendingPharmacy ? "Pharmacy Security" : "Sign In"}
           </h1>
-          <p className="text-sm text-slate-400">Enter your 4-digit PIN</p>
+          <p className="text-sm text-slate-400">
+            {pendingPharmacy
+              ? "Enter your 6-digit security PIN"
+              : "Enter your 4-digit PIN"}
+          </p>
+          {pendingPharmacy?.pharmacyName && (
+            <p className="text-xs text-emerald-300/90 font-semibold tracking-wide">
+              {pendingPharmacy.pharmacyName}
+            </p>
+          )}
         </div>
 
         {/* PIN DOTS */}
         <div className="flex gap-4">
-          {[0, 1, 2, 3].map((i) => (
+          {Array.from({ length: requiredDigits }).map((_, i) => (
             <div
               key={i}
               className={`w-5 h-5 rounded-full border-2 transition-all duration-300 ${
@@ -214,6 +269,12 @@ export default function LoginPage() {
           </div>
         )}
 
+        {info && !error && (
+          <div className="bg-emerald-500/10 border border-emerald-500/40 rounded-lg px-4 py-2 text-xs text-emerald-200 animate-in fade-in duration-300">
+            {info}
+          </div>
+        )}
+
         {/* VALIDATING MESSAGE */}
         {isValidating && (
           <div className="text-xs uppercase tracking-widest text-emerald-300/90 animate-pulse">
@@ -227,12 +288,12 @@ export default function LoginPage() {
             <button
               key={key}
               onClick={() => handlePress(key)}
-              disabled={isValidating || (key === "OK" && pin.length !== 4)}
+              disabled={isValidating || (key === "OK" && pin.length !== requiredDigits)}
               className={`w-16 h-14 rounded-xl font-bold text-lg transition-all duration-200 ${
                 key === "C"
                   ? "bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/30"
                   : key === "OK"
-                  ? pin.length === 4
+                  ? pin.length === requiredDigits
                     ? "bg-emerald-500/80 hover:bg-emerald-500 text-white border border-emerald-400/50 shadow-lg shadow-emerald-500/30"
                     : "bg-slate-700/30 text-slate-500 border border-slate-600/30 cursor-not-allowed"
                   : "bg-slate-700/40 hover:bg-slate-600/60 text-white border border-slate-600/50 hover:shadow-lg hover:shadow-slate-500/20 hover:scale-105 active:scale-95"

@@ -84,13 +84,16 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
-        && hasFields(["pharmacyName", "pin", "active"])
+        && hasFields(["pharmacyName", "pin", "securityPin6", "active"])
         && request.resource.data.pharmacyName is string
         && request.resource.data.pin is string
+        && request.resource.data.securityPin6 is string
+        && request.resource.data.pin.matches('^[0-9]{4}$')
+        && request.resource.data.securityPin6.matches('^[0-9]{6}$')
         && request.resource.data.active is bool;
 
       allow update: if isSignedIn()
-        && unchangedKeys(["pin", "createdAt"]);
+        && unchangedKeys(["pin", "securityPin6", "createdAt"]);
 
       allow delete: if false;
     }
