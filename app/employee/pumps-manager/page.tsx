@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { sendAppEmail } from "@/lib/emailClient";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 type Customer = {
   id: string;
@@ -97,6 +98,11 @@ export default function PumpsManagerPage() {
     typeof window !== "undefined"
       ? localStorage.getItem("PHARMACY_ID")
       : null;
+
+  const isPharmacyAdmin =
+    typeof window !== "undefined"
+      ? localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      : false;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -329,6 +335,7 @@ export default function PumpsManagerPage() {
           <p className="text-sm text-white/60">
             Customers with pumps not returned for long periods
           </p>
+          <AdminModeBadge />
         </div>
 
         {error && <p className="text-red-400 text-sm text-center">{error}</p>}
@@ -495,10 +502,16 @@ export default function PumpsManagerPage() {
 
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() =>
+              router.push(
+                isPharmacyAdmin
+                  ? "/pharmacy/dashboard"
+                  : "/employee/dashboard"
+              )
+            }
             className="text-xs text-white/50 hover:text-white"
           >
-            ← Back to Employee Dashboard
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
       </div>

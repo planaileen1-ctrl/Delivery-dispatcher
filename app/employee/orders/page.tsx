@@ -18,6 +18,7 @@ import {
   addDoc,
   getDoc,
   getDocs,
+  deleteDoc,
   onSnapshot,
   query,
   where,
@@ -27,6 +28,7 @@ import { updateDoc, doc } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { logPumpMovement } from "@/lib/pumpLogger";
 import { normalizePumpScannerInput } from "@/lib/pumpScanner";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 /* ---------- Types ---------- */
 type Pump = {
@@ -49,8 +51,14 @@ type Customer = {
 type ActivityOrder = {
   id: string;
   status: string;
+  customerId?: string;
   customerName?: string;
   customerCity?: string;
+  customerAddress?: string;
+  customerState?: string;
+  customerCountry?: string;
+  returnReminderNote?: string;
+  pumpIds?: string[];
   pumpNumbers?: string[];
   driverName?: string;
   createdByEmployeeName?: string;
@@ -87,6 +95,21 @@ export default function EmployeeOrdersPage() {
       ? localStorage.getItem("EMPLOYEE_NAME")
       : "UNKNOWN";
 
+  const ordersBasePath =
+    typeof window !== "undefined" && localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      ? "/pharmacy/orders"
+      : "/employee/orders";
+
+  const dashboardPath =
+    typeof window !== "undefined" && localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      ? "/pharmacy/dashboard"
+      : "/employee/dashboard";
+
+  const dashboardLabel =
+    typeof window !== "undefined" && localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      ? "← Back to Pharmacy Dashboard"
+      : "← Back to Employee Dashboard";
+
   /* ---------- State ---------- */
   const [pumps, setPumps] = useState<Pump[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -107,6 +130,15 @@ export default function EmployeeOrdersPage() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityStatusFilter, setActivityStatusFilter] = useState<"ALL" | "ACTIVE" | "DELIVERED">("ALL");
   const [currentView, setCurrentView] = useState<"activity" | "create">("create");
+  const [isPharmacyAdmin, setIsPharmacyAdmin] = useState(false);
+  const [editingActivityOrderId, setEditingActivityOrderId] = useState<string | null>(null);
+  const [editingActivityCustomerId, setEditingActivityCustomerId] = useState("");
+  const [activityActionLoadingByOrder, setActivityActionLoadingByOrder] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsPharmacyAdmin(localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN");
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -432,6 +464,108 @@ export default function EmployeeOrdersPage() {
     }
   }
 
+  function isPendingOrder(order: ActivityOrder) {
+    return String(order.status || "PENDING").trim().toUpperCase() === "PENDING";
+  }
+
+  function handleStartEditActivityOrder(order: ActivityOrder) {
+    if (!isPharmacyAdmin) return;
+    if (!isPendingOrder(order)) {
+      setError("Only pending orders can be edited.");
+      return;
+    }
+
+    setError("");
+    setEditingActivityOrderId(order.id);
+    setEditingActivityCustomerId(String(order.customerId || ""));
+  }
+
+  function handleCancelEditActivityOrder() {
+    setEditingActivityOrderId(null);
+    setEditingActivityCustomerId("");
+  }
+
+  async function handleSaveEditActivityOrder(order: ActivityOrder) {
+    if (!isPharmacyAdmin) return;
+
+    if (!isPendingOrder(order)) {
+      setError("Only pending orders can be edited.");
+      return;
+    }
+
+    const selectedCustomer = customers.find((c) => c.id === editingActivityCustomerId);
+    if (!selectedCustomer) {
+      setError("Select a valid customer before saving.");
+      return;
+    }
+
+    setError("");
+    setActivityActionLoadingByOrder((prev) => ({ ...prev, [order.id]: true }));
+
+    try {
+      await updateDoc(doc(db, "orders", order.id), {
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        customerCity: selectedCustomer.city,
+        customerAddress: selectedCustomer.address || "",
+        customerState: selectedCustomer.state || "",
+        customerCountry: selectedCustomer.country || "",
+        returnReminderNote: selectedCustomer.returnReminderNote || "",
+        statusUpdatedAt: serverTimestamp(),
+      });
+
+      setInfo("Order updated successfully.");
+      setTimeout(() => setInfo(""), 4000);
+      handleCancelEditActivityOrder();
+    } catch (err) {
+      console.error("handleSaveEditActivityOrder error:", err);
+      setError("Failed to update order.");
+    } finally {
+      setActivityActionLoadingByOrder((prev) => ({ ...prev, [order.id]: false }));
+    }
+  }
+
+  async function handleDeleteActivityOrder(order: ActivityOrder) {
+    if (!isPharmacyAdmin) return;
+
+    if (!isPendingOrder(order)) {
+      setError("Only pending orders can be deleted.");
+      return;
+    }
+
+    if (!confirm("Delete this pending order?")) return;
+
+    setError("");
+    setActivityActionLoadingByOrder((prev) => ({ ...prev, [order.id]: true }));
+
+    try {
+      const pumpIdsToRelease = Array.isArray(order.pumpIds) ? order.pumpIds : [];
+
+      for (const pumpId of pumpIdsToRelease) {
+        try {
+          await updateDoc(doc(db, "pumps", pumpId), {
+            status: "AVAILABLE",
+          });
+        } catch (pumpErr) {
+          console.warn("Failed to release pump on order delete:", pumpId, pumpErr);
+        }
+      }
+
+      await deleteDoc(doc(db, "orders", order.id));
+      setInfo("Order deleted successfully.");
+      setTimeout(() => setInfo(""), 4000);
+
+      if (editingActivityOrderId === order.id) {
+        handleCancelEditActivityOrder();
+      }
+    } catch (err) {
+      console.error("handleDeleteActivityOrder error:", err);
+      setError("Failed to delete order.");
+    } finally {
+      setActivityActionLoadingByOrder((prev) => ({ ...prev, [order.id]: false }));
+    }
+  }
+
   /* ---------- Create Order ---------- */
   async function handleCreateOrder() {
     setError("");
@@ -661,6 +795,7 @@ export default function EmployeeOrdersPage() {
               ? "Track all created orders and driver progress"
               : "Create and manage delivery orders"}
           </p>
+          <AdminModeBadge />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -668,7 +803,7 @@ export default function EmployeeOrdersPage() {
             type="button"
             onClick={() => {
               setCurrentView("create");
-              router.replace("/employee/orders?view=create");
+              router.replace(`${ordersBasePath}?view=create`);
             }}
             className={`rounded-lg py-2 text-sm font-semibold border transition-colors ${
               currentView === "create"
@@ -682,7 +817,7 @@ export default function EmployeeOrdersPage() {
             type="button"
             onClick={() => {
               setCurrentView("activity");
-              router.replace("/employee/orders?view=activity");
+              router.replace(`${ordersBasePath}?view=activity`);
             }}
             className={`rounded-lg py-2 text-sm font-semibold border transition-colors ${
               currentView === "activity"
@@ -954,6 +1089,69 @@ export default function EmployeeOrdersPage() {
                       <p>Arrived: {formatTimestamp(o.arrivedAt)}</p>
                       <p>Delivered: {formatTimestamp(o.deliveredAt)}</p>
                     </div>
+
+                    {isPharmacyAdmin && (
+                      <div className="pt-2 border-t border-white/10">
+                        {editingActivityOrderId === o.id ? (
+                          <div className="space-y-2">
+                            <select
+                              value={editingActivityCustomerId}
+                              onChange={(e) => setEditingActivityCustomerId(e.target.value)}
+                              className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-xs"
+                            >
+                              <option value="">Select Customer</option>
+                              {customers.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name} ({c.city})
+                                </option>
+                              ))}
+                            </select>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEditActivityOrder(o)}
+                                disabled={activityActionLoadingByOrder[o.id] === true}
+                                className="text-xs text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelEditActivityOrder}
+                                disabled={activityActionLoadingByOrder[o.id] === true}
+                                className="text-xs text-white/60 hover:text-white disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditActivityOrder(o)}
+                              disabled={!isPendingOrder(o) || activityActionLoadingByOrder[o.id] === true}
+                              className="text-xs text-cyan-300 hover:text-cyan-200 disabled:opacity-40"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteActivityOrder(o)}
+                              disabled={!isPendingOrder(o) || activityActionLoadingByOrder[o.id] === true}
+                              className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40"
+                            >
+                              Delete
+                            </button>
+                            {!isPendingOrder(o) && (
+                              <span className="text-[10px] text-white/40">
+                                Locked: only pending orders can be edited/deleted
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -963,10 +1161,10 @@ export default function EmployeeOrdersPage() {
 
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() => router.push(dashboardPath)}
             className="text-xs text-white/50 hover:text-white"
           >
-            ← Back to Employee Dashboard
+            {dashboardLabel}
           </button>
         </div>
 

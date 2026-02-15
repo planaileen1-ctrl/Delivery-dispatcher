@@ -23,6 +23,7 @@ import {
 } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { normalizePumpScannerInput } from "@/lib/pumpScanner";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -68,6 +69,11 @@ export default function PumpReturnsPage() {
     typeof window !== "undefined"
       ? localStorage.getItem("PHARMACY_ID")
       : null;
+
+  const isPharmacyAdmin =
+    typeof window !== "undefined"
+      ? localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      : false;
 
   const [orders, setOrders] = useState<ReturnOrder[]>([]);
   const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
@@ -317,6 +323,7 @@ export default function PumpReturnsPage() {
           <p className="text-sm text-white/60">
             Track return status and reasons for non-returned pumps
           </p>
+          <AdminModeBadge />
         </div>
 
         {error && <p className="text-red-400 text-sm text-center">{error}</p>}
@@ -490,10 +497,16 @@ export default function PumpReturnsPage() {
 
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() =>
+              router.push(
+                isPharmacyAdmin
+                  ? "/pharmacy/dashboard"
+                  : "/employee/dashboard"
+              )
+            }
             className="text-xs text-white/50 hover:text-white"
           >
-            ← Back to Employee Dashboard
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
       </div>

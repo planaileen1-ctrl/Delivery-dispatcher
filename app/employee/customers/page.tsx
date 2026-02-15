@@ -25,12 +25,15 @@ import {
   addDoc,
   getDocs,
   deleteDoc,
+  updateDoc,
+  onSnapshot,
   doc,
   serverTimestamp,
   query,
   where,
 } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -110,13 +113,49 @@ export default function EmployeeCustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isPharmacyAdmin, setIsPharmacyAdmin] = useState(false);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+  const [editingCustomerForm, setEditingCustomerForm] = useState({
+    customerName: "",
+    representative: "",
+    email: "",
+    country: "" as CountryKey | "",
+    state: "",
+    city: "",
+    address: "",
+  });
 
   /* 🔐 Init */
   useEffect(() => {
-    ensureAnonymousAuth();
-    if (pharmacyId) {
-      loadCustomers();
-    }
+    let unsub: null | (() => void) = null;
+
+    (async () => {
+      await ensureAnonymousAuth();
+      if (!pharmacyId) return;
+
+      const q = query(
+        collection(db, "customers"),
+        where("pharmacyId", "==", pharmacyId)
+      );
+
+      unsub = onSnapshot(q, (snap) => {
+        const list: Customer[] = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
+
+        setCustomers(list);
+      });
+    })();
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsPharmacyAdmin(localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN");
   }, []);
 
   /* 📦 Load customers */
@@ -189,9 +228,92 @@ export default function EmployeeCustomersPage() {
 
   /* 🗑️ Delete */
   async function handleDeleteCustomer(id: string) {
+    if (!isPharmacyAdmin) return;
     if (!confirm("Delete this customer?")) return;
     await deleteDoc(doc(db, "customers", id));
     await loadCustomers();
+  }
+
+  function handleStartEditCustomer(customer: Customer) {
+    if (!isPharmacyAdmin) return;
+    setError("");
+    setEditingCustomerId(customer.id);
+    setEditingCustomerForm({
+      customerName: customer.customerName || "",
+      representative: customer.representative || "",
+      email: customer.email || "",
+      country: ((customer.country || "") as CountryKey | "") || "",
+      state: customer.state || "",
+      city: customer.city || "",
+      address: customer.address || "",
+    });
+  }
+
+  function handleCancelEditCustomer() {
+    setEditingCustomerId(null);
+    setEditingCustomerForm({
+      customerName: "",
+      representative: "",
+      email: "",
+      country: "",
+      state: "",
+      city: "",
+      address: "",
+    });
+  }
+
+  function handleEditCustomerChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) {
+    const { name, value } = e.target;
+    setEditingCustomerForm((prev) => {
+      const next = {
+        ...prev,
+        [name]: value,
+      };
+
+      if (name === "country") {
+        next.state = "";
+      }
+
+      return next;
+    });
+  }
+
+  async function handleSaveEditCustomer(id: string) {
+    if (!isPharmacyAdmin) return;
+    setError("");
+
+    if (
+      !editingCustomerForm.customerName.trim() ||
+      !editingCustomerForm.country ||
+      !editingCustomerForm.state.trim() ||
+      !editingCustomerForm.city.trim()
+    ) {
+      setError("Please complete all required fields");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, "customers", id), {
+        customerName: editingCustomerForm.customerName.trim(),
+        representative: editingCustomerForm.representative.trim(),
+        email: editingCustomerForm.email.trim(),
+        country: editingCustomerForm.country,
+        state: editingCustomerForm.state.trim(),
+        city: editingCustomerForm.city.trim(),
+        address: editingCustomerForm.address.trim(),
+      });
+
+      handleCancelEditCustomer();
+      await loadCustomers();
+    } catch (err) {
+      console.error(err);
+      setError("Failed to update customer");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -206,6 +328,7 @@ export default function EmployeeCustomersPage() {
           <p className="text-sm text-white/60">
             Create and manage pharmacy customers
           </p>
+          <AdminModeBadge />
         </div>
 
         {/* FORM */}
@@ -272,20 +395,121 @@ export default function EmployeeCustomersPage() {
               <li key={c.id}
                 className="border border-white/10 rounded p-4 flex justify-between">
                 <div className="space-y-1">
-                  <p className="font-medium">{c.customerName}</p>
-                  <p className="text-xs text-white/60">
-                    {c.city}, {c.state}, {c.country}
-                  </p>
-                  <p className="text-xs text-white/40">
-                    Registered by {c.createdBy} — {formatDate(c.createdAt)}
-                  </p>
+                  {isPharmacyAdmin && editingCustomerId === c.id ? (
+                    <div className="space-y-2">
+                      <input
+                        name="customerName"
+                        value={editingCustomerForm.customerName}
+                        onChange={handleEditCustomerChange}
+                        placeholder="Customer Name *"
+                        className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                      <input
+                        name="representative"
+                        value={editingCustomerForm.representative}
+                        onChange={handleEditCustomerChange}
+                        placeholder="Representative"
+                        className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                      <input
+                        name="email"
+                        value={editingCustomerForm.email}
+                        onChange={handleEditCustomerChange}
+                        placeholder="Email"
+                        type="email"
+                        className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                      <select
+                        name="country"
+                        value={editingCustomerForm.country}
+                        onChange={handleEditCustomerChange}
+                        className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                      >
+                        <option value="">Select Country *</option>
+                        {Object.keys(COUNTRIES).map((country) => (
+                          <option key={country} value={country}>
+                            {country}
+                          </option>
+                        ))}
+                      </select>
+                      {editingCustomerForm.country && (
+                        <select
+                          name="state"
+                          value={editingCustomerForm.state}
+                          onChange={handleEditCustomerChange}
+                          className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                        >
+                          <option value="">Select State *</option>
+                          {COUNTRIES[editingCustomerForm.country].map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <input
+                        name="city"
+                        value={editingCustomerForm.city}
+                        onChange={handleEditCustomerChange}
+                        placeholder="City *"
+                        className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                      <input
+                        name="address"
+                        value={editingCustomerForm.address}
+                        onChange={handleEditCustomerChange}
+                        placeholder="Physical Address"
+                        className="w-full max-w-sm p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="font-medium">{c.customerName}</p>
+                      <p className="text-xs text-white/60">
+                        {c.city}, {c.state}, {c.country}
+                      </p>
+                      <p className="text-xs text-white/40">
+                        Registered by {c.createdBy} — {formatDate(c.createdAt)}
+                      </p>
+                    </>
+                  )}
                 </div>
 
-                <button
-                  onClick={() => handleDeleteCustomer(c.id)}
-                  className="text-xs text-red-400 hover:text-red-500">
-                  Delete
-                </button>
+                {isPharmacyAdmin && (
+                  <div className="flex flex-col items-end gap-2">
+                    {editingCustomerId === c.id ? (
+                      <>
+                        <button
+                          onClick={() => handleSaveEditCustomer(c.id)}
+                          disabled={loading}
+                          className="text-xs text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={handleCancelEditCustomer}
+                          disabled={loading}
+                          className="text-xs text-white/60 hover:text-white disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleStartEditCustomer(c)}
+                        className="text-xs text-cyan-300 hover:text-cyan-200"
+                      >
+                        Edit
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleDeleteCustomer(c.id)}
+                      className="text-xs text-red-400 hover:text-red-500">
+                      Delete
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -294,9 +518,15 @@ export default function EmployeeCustomersPage() {
         {/* BACK */}
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() =>
+              router.push(
+                localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+                  ? "/pharmacy/dashboard"
+                  : "/employee/dashboard"
+              )
+            }
             className="text-xs text-white/50 hover:text-white">
-            ← Back to Employee Dashboard
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
 

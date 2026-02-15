@@ -22,6 +22,8 @@ import {
   addDoc,
   getDocs,
   deleteDoc,
+  updateDoc,
+  onSnapshot,
   doc,
   serverTimestamp,
   query,
@@ -29,6 +31,7 @@ import {
 } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { normalizePumpScannerInput } from "@/lib/pumpScanner";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -114,13 +117,62 @@ export default function EmployeePumpsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "maintenance" | "available" | "in_use">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isPharmacyAdmin, setIsPharmacyAdmin] = useState(false);
+  const [editingPumpId, setEditingPumpId] = useState<string | null>(null);
+  const [editingPumpNumber, setEditingPumpNumber] = useState("");
+  const [editingPumpBrand, setEditingPumpBrand] = useState("");
+
+  function sortPumps(list: Pump[]) {
+    return [...list].sort((a, b) => {
+      const aInfo = getNormalizedPumpStatus(a);
+      const bInfo = getNormalizedPumpStatus(b);
+
+      const getRank = (info: ReturnType<typeof getNormalizedPumpStatus>) => {
+        if (info.inMaintenance) return 0;
+        if (!info.isAvailable) return 1;
+        return 2;
+      };
+
+      const aRank = getRank(aInfo);
+      const bRank = getRank(bInfo);
+
+      if (aRank !== bRank) return aRank - bRank;
+
+      return String(a.pumpNumber || "").localeCompare(String(b.pumpNumber || ""));
+    });
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsPharmacyAdmin(localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN");
+  }, []);
 
   /* 🔐 Init */
   useEffect(() => {
-    ensureAnonymousAuth();
-    if (pharmacyId) {
-      loadPumps();
-    }
+    let unsub: null | (() => void) = null;
+
+    (async () => {
+      await ensureAnonymousAuth();
+      if (!pharmacyId) return;
+
+      const q = query(
+        collection(db, "pumps"),
+        where("pharmacyId", "==", pharmacyId)
+      );
+
+      unsub = onSnapshot(q, (snap) => {
+        const list: Pump[] = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
+
+        setPumps(sortPumps(list));
+      });
+    })();
+
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
   /* 📦 Load pumps */
@@ -139,25 +191,7 @@ export default function EmployeePumpsPage() {
       ...(d.data() as any),
     }));
 
-    const sorted = [...list].sort((a, b) => {
-      const aInfo = getNormalizedPumpStatus(a);
-      const bInfo = getNormalizedPumpStatus(b);
-
-      const getRank = (info: ReturnType<typeof getNormalizedPumpStatus>) => {
-        if (info.inMaintenance) return 0;
-        if (!info.isAvailable) return 1;
-        return 2;
-      };
-
-      const aRank = getRank(aInfo);
-      const bRank = getRank(bInfo);
-
-      if (aRank !== bRank) return aRank - bRank;
-
-      return String(a.pumpNumber || "").localeCompare(String(b.pumpNumber || ""));
-    });
-
-    setPumps(sorted);
+    setPumps(sortPumps(list));
   }
 
   /* ➕ Register pump */
@@ -202,10 +236,52 @@ export default function EmployeePumpsPage() {
 
   /* 🗑️ Delete pump */
   async function handleDeletePump(id: string) {
+    if (!isPharmacyAdmin) return;
     if (!confirm("Delete this pump?")) return;
 
     await deleteDoc(doc(db, "pumps", id));
     await loadPumps();
+  }
+
+  function handleStartEditPump(pump: Pump) {
+    if (!isPharmacyAdmin) return;
+    setError("");
+    setEditingPumpId(pump.id);
+    setEditingPumpNumber(String(pump.pumpNumber || ""));
+    setEditingPumpBrand(String(pump.brand || ""));
+  }
+
+  function handleCancelEditPump() {
+    setEditingPumpId(null);
+    setEditingPumpNumber("");
+    setEditingPumpBrand("");
+  }
+
+  async function handleSaveEditPump(id: string) {
+    if (!isPharmacyAdmin) return;
+    setError("");
+
+    const normalizedPumpNumber = normalizePumpScannerInput(editingPumpNumber).trim();
+    if (!normalizedPumpNumber) {
+      setError("Pump number is required");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, "pumps", id), {
+        pumpNumber: normalizedPumpNumber,
+        brand: editingPumpBrand.trim() || null,
+      });
+
+      handleCancelEditPump();
+      await loadPumps();
+    } catch (err) {
+      console.error(err);
+      setError("Failed to update pump");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const filteredPumps = pumps.filter((p) => {
@@ -232,6 +308,7 @@ export default function EmployeePumpsPage() {
           <p className="text-sm text-white/60">
             Register and manage hospital medical pumps
           </p>
+          <AdminModeBadge />
         </div>
 
         {/* REGISTER FORM */}
@@ -338,9 +415,26 @@ export default function EmployeePumpsPage() {
                 className="border border-white/10 rounded p-4 flex justify-between items-start"
               >
                 <div className="space-y-1">
-                  <p className="font-medium">
-                    Pump #{p.pumpNumber}
-                  </p>
+                  {isPharmacyAdmin && editingPumpId === p.id ? (
+                    <div className="space-y-2">
+                      <input
+                        value={editingPumpNumber}
+                        onChange={(e) => setEditingPumpNumber(normalizePumpScannerInput(e.target.value))}
+                        placeholder="Pump Number"
+                        className="w-full max-w-xs p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                      <input
+                        value={editingPumpBrand}
+                        onChange={(e) => setEditingPumpBrand(e.target.value)}
+                        placeholder="Brand (optional)"
+                        className="w-full max-w-xs p-2 rounded bg-black border border-white/10 text-sm"
+                      />
+                    </div>
+                  ) : (
+                    <p className="font-medium">
+                      Pump #{p.pumpNumber}
+                    </p>
+                  )}
 
                   <p className="text-xs text-white/70">
                     Status:{" "}
@@ -351,7 +445,7 @@ export default function EmployeePumpsPage() {
                     </span>
                   </p>
 
-                  {p.brand && (
+                  {p.brand && editingPumpId !== p.id && (
                     <p className="text-xs text-white/60">
                       Brand: {p.brand}
                     </p>
@@ -369,12 +463,42 @@ export default function EmployeePumpsPage() {
                   </p>
                 </div>
 
-                <button
-                  onClick={() => handleDeletePump(p.id)}
-                  className="text-xs text-red-400 hover:text-red-500"
-                >
-                  Delete
-                </button>
+                {isPharmacyAdmin && (
+                  <div className="flex flex-col items-end gap-2">
+                    {editingPumpId === p.id ? (
+                      <>
+                        <button
+                          onClick={() => handleSaveEditPump(p.id)}
+                          disabled={loading}
+                          className="text-xs text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={handleCancelEditPump}
+                          disabled={loading}
+                          className="text-xs text-white/60 hover:text-white disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleStartEditPump(p)}
+                        className="text-xs text-cyan-300 hover:text-cyan-200"
+                      >
+                        Edit
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleDeletePump(p.id)}
+                      className="text-xs text-red-400 hover:text-red-500"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </li>
                 );
               })()
@@ -385,10 +509,16 @@ export default function EmployeePumpsPage() {
         {/* BACK */}
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() =>
+              router.push(
+                localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+                  ? "/pharmacy/dashboard"
+                  : "/employee/dashboard"
+              )
+            }
             className="text-xs text-white/50 hover:text-white"
           >
-            ← Back to Employee Dashboard
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
 

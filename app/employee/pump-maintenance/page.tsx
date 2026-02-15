@@ -21,6 +21,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 type Pump = {
   id: string;
@@ -40,6 +41,11 @@ export default function PumpMaintenancePage() {
     typeof window !== "undefined"
       ? localStorage.getItem("PHARMACY_ID")
       : null;
+
+  const isPharmacyAdmin =
+    typeof window !== "undefined"
+      ? localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      : false;
 
   const [pumps, setPumps] = useState<Pump[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -115,6 +121,7 @@ export default function PumpMaintenancePage() {
           <p className="text-sm text-white/60">
             Clean, calibrate, and inspect returned pumps
           </p>
+          <AdminModeBadge />
         </div>
 
         {error && <p className="text-red-400 text-sm text-center">{error}</p>}
@@ -219,10 +226,16 @@ export default function PumpMaintenancePage() {
 
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() =>
+              router.push(
+                isPharmacyAdmin
+                  ? "/pharmacy/dashboard"
+                  : "/employee/dashboard"
+              )
+            }
             className="text-xs text-white/50 hover:text-white"
           >
-            ← Back to Employee Dashboard
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
       </div>

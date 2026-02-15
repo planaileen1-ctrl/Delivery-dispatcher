@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { sendAppEmail } from "@/lib/emailClient";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -37,6 +38,11 @@ function formatDate(ts: any) {
 
 export default function EmployeeDeliveryPdfsPage() {
   const router = useRouter();
+
+  const isPharmacyAdmin =
+    typeof window !== "undefined"
+      ? localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      : false;
 
   const pharmacyId =
     typeof window !== "undefined"
@@ -141,6 +147,7 @@ export default function EmployeeDeliveryPdfsPage() {
           <p className="text-sm text-white/60">
             View and share legal delivery PDF records
           </p>
+          <AdminModeBadge />
         </div>
 
         {error && <p className="text-red-400 text-sm text-center">{error}</p>}
@@ -195,10 +202,16 @@ export default function EmployeeDeliveryPdfsPage() {
 
         <div className="text-center">
           <button
-            onClick={() => router.push("/employee/dashboard")}
+            onClick={() =>
+              router.push(
+                isPharmacyAdmin
+                  ? "/pharmacy/dashboard"
+                  : "/employee/dashboard"
+              )
+            }
             className="text-xs text-white/50 hover:text-white"
           >
-            ← Back to Employee Dashboard
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
       </div>

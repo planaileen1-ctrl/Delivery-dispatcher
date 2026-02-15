@@ -4,9 +4,11 @@
 
 import { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { Loader, MapPin, Radio } from "lucide-react";
+import AdminModeBadge from "@/components/AdminModeBadge";
 
 /* ========================
    MAP COMPONENT (Dynamic)
@@ -37,8 +39,15 @@ const ACTIVE_DELIVERY_STATUSES = [
 ] as const;
 
 export default function DriverTrackingPage() {
+  const router = useRouter();
+
   const pharmacyId =
     typeof window !== "undefined" ? localStorage.getItem("PHARMACY_ID") : null;
+
+  const isPharmacyAdmin =
+    typeof window !== "undefined"
+      ? localStorage.getItem("EMPLOYEE_ROLE") === "PHARMACY_ADMIN"
+      : false;
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,6 +234,9 @@ export default function DriverTrackingPage() {
               )}
             </div>
           </div>
+          <div className="text-center">
+            <AdminModeBadge />
+          </div>
           <p className="text-sm text-slate-400">
             Monitoring {drivers.length} active delivery driver{drivers.length !== 1 ? 's' : ''} • Updates every 8 seconds
           </p>
@@ -309,10 +321,12 @@ export default function DriverTrackingPage() {
         {/* BACK BUTTON */}
         <div className="text-center pt-4">
           <button
-            onClick={() => window.history.back()}
+            onClick={() =>
+              router.push(isPharmacyAdmin ? "/pharmacy/dashboard" : "/employee/dashboard")
+            }
             className="text-sm text-slate-500 hover:text-emerald-400 transition-colors font-semibold uppercase tracking-wide"
           >
-            ← Back
+            {isPharmacyAdmin ? "← Back to Pharmacy Dashboard" : "← Back to Employee Dashboard"}
           </button>
         </div>
       </div>
