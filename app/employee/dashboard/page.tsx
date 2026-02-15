@@ -15,6 +15,13 @@ import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { auth, db, ensureAnonymousAuth } from "@/lib/firebase";
+import {
+  LayoutDashboard,
+  Search,
+  Bell,
+  LogOut,
+  ChevronRight,
+} from "lucide-react";
 
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -199,214 +206,243 @@ export default function EmployeeDashboardPage() {
     ? new Date(loginAt).toLocaleString("en-US", DATE_TIME_FORMAT)
     : "--";
 
-  return (
-    <main className="h-screen bg-gradient-to-b from-[#020617] via-[#0a091e] to-[#020617] text-white px-4 py-4 overflow-hidden">
-      
-      {/* Background decorations */}
-      <div className="fixed top-0 left-0 w-96 h-96 bg-emerald-500/8 blur-3xl rounded-full -z-10" />
-      <div className="fixed bottom-0 right-0 w-96 h-96 bg-indigo-500/8 blur-3xl rounded-full -z-10" />
-      
-      <div className="w-full max-w-6xl h-full mx-auto flex flex-col gap-4">
+  const stats = [
+    { label: "Pump Out", value: String(pumpOutCount) },
+    { label: "20+ Days", value: String(pumpOutOver20Count) },
+    { label: "30+ Days", value: String(pumpOutOver30Count) },
+  ];
 
-        {/* HEADER */}
-        <div className="text-center space-y-1">
-          <h1 className="text-4xl font-black bg-gradient-to-r from-white via-emerald-100 to-white bg-clip-text text-transparent">
-            Employee Dashboard
-          </h1>
-          <p className="text-sm text-slate-400 font-medium">
-            Select an action to continue managing operations
-          </p>
+  const actionCards = [
+    {
+      id: "pumps",
+      title: "Medical Pumps",
+      desc: "Manage pump inventory and availability",
+      emoji: "🏥",
+      link: "Go to pump management",
+      onClick: () => router.push("/employee/pumps"),
+      cardClass:
+        "from-indigo-500/15 to-indigo-600/5 border-indigo-500/30 hover:border-indigo-400/70 hover:shadow-indigo-500/20",
+      textClass: "text-indigo-400",
+    },
+    {
+      id: "customers",
+      title: "Customers",
+      desc: "Customer database and administration",
+      emoji: "👥",
+      link: "Manage customers",
+      onClick: () => router.push("/employee/customers"),
+      cardClass:
+        "from-emerald-500/15 to-emerald-600/5 border-emerald-500/30 hover:border-emerald-400/70 hover:shadow-emerald-500/20",
+      textClass: "text-emerald-400",
+    },
+    {
+      id: "shipping",
+      title: "New Shipping Orders",
+      desc: "Create a new rapid delivery order",
+      emoji: "📦",
+      link: "Create new order",
+      onClick: () => router.push("/employee/orders?view=create"),
+      cardClass:
+        "from-amber-500/15 to-amber-600/5 border-amber-500/30 hover:border-amber-400/70 hover:shadow-amber-500/20",
+      textClass: "text-amber-400",
+      highlight: true,
+    },
+    {
+      id: "pump-out",
+      title: "Pump Out (Clients)",
+      desc: "Pumps pending for collection from clients",
+      emoji: "🧪",
+      link: "Open pending client pumps",
+      onClick: () => router.push("/employee/pumps-manager"),
+      cardClass:
+        "from-blue-500/15 to-blue-600/5 border-blue-500/30 hover:border-blue-400/70 hover:shadow-blue-500/20",
+      textClass: "text-blue-400",
+      badge: pumpOutCount,
+      heartbeat: pumpOutCount > 0,
+    },
+    {
+      id: "returns",
+      title: "Pump Returns",
+      desc: "Equipment return and intake logs",
+      emoji: "↩️",
+      link: "View return log",
+      onClick: () => router.push("/employee/pump-returns"),
+      cardClass:
+        "from-rose-500/15 to-rose-600/5 border-rose-500/30 hover:border-rose-400/70 hover:shadow-rose-500/20",
+      textClass: "text-rose-400",
+    },
+    {
+      id: "maintenance",
+      title: "Pump Maintenance",
+      desc: "Technical service and prevention",
+      emoji: "🧰",
+      link: "Open maintenance",
+      onClick: () => router.push("/employee/pump-maintenance"),
+      cardClass:
+        "from-lime-500/15 to-lime-600/5 border-lime-500/30 hover:border-lime-400/70 hover:shadow-lime-500/20",
+      textClass: "text-lime-400",
+    },
+    {
+      id: "activity",
+      title: "Orders Activity",
+      desc: "Complete movement and history logs",
+      emoji: "🚚",
+      link: "View orders activity",
+      onClick: () => router.push("/employee/orders?view=activity"),
+      cardClass:
+        "from-cyan-500/15 to-cyan-600/5 border-cyan-500/30 hover:border-cyan-400/70 hover:shadow-cyan-500/20",
+      textClass: "text-cyan-400",
+    },
+    {
+      id: "backups",
+      title: "Delivery PDF Backups",
+      desc: "Download delivery proof documents",
+      emoji: "📄",
+      link: "Open archives",
+      onClick: () => router.push("/employee/delivery-pdfs"),
+      cardClass:
+        "from-slate-500/15 to-slate-600/5 border-slate-500/30 hover:border-slate-400/70 hover:shadow-slate-500/20",
+      textClass: "text-slate-300",
+    },
+    {
+      id: "tracking",
+      title: "Driver Tracking",
+      desc: "Real-time driver location and status",
+      emoji: "📍",
+      link: "View live map",
+      onClick: () => router.push("/employee/driver-tracking"),
+      cardClass:
+        "from-red-500/15 to-red-600/5 border-red-500/30 hover:border-red-400/70 hover:shadow-red-500/20",
+      textClass: "text-red-400",
+    },
+  ];
+
+  return (
+    <div className="flex min-h-screen bg-[#070b16] text-slate-200 overflow-hidden">
+      <div className="fixed top-0 left-0 w-96 h-96 bg-emerald-500/10 blur-3xl rounded-full -z-10" />
+      <div className="fixed bottom-0 right-0 w-96 h-96 bg-indigo-500/10 blur-3xl rounded-full -z-10" />
+
+      <aside className="hidden md:flex w-72 bg-[#0d1220]/90 border-r border-white/5 p-5 flex-col gap-6">
+        <div className="flex items-center gap-3 px-1">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <LayoutDashboard size={20} className="text-white" />
+          </div>
+          <div>
+            <p className="text-xl font-black text-white leading-none">NEXUS</p>
+            <p className="text-[10px] font-bold tracking-[0.2em] text-slate-500">LOGISTICS SYSTEMS</p>
+          </div>
         </div>
 
-        <div className="bg-gradient-to-r from-slate-900/70 to-slate-800/40 border border-slate-700/60 rounded-2xl p-3 md:p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-widest text-emerald-300/90 font-semibold">
-              Session
-            </p>
-            <p className="text-sm text-slate-100 font-semibold">
-              {employeeName}
-            </p>
-            {employeeEmail && (
-              <p className="text-xs text-slate-400">{employeeEmail}</p>
-            )}
-            <p className="text-xs text-slate-400">
-              Login: <span className="text-slate-200">{formattedLoginAt}</span>
-            </p>
-          </div>
+        <nav className="space-y-1">
+          <p className="text-[10px] font-bold text-slate-500 tracking-[0.22em] px-3">MAIN MENU</p>
+          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/15 border border-blue-500/25 text-blue-300">
+            <LayoutDashboard size={18} />
+            <span className="text-sm font-semibold">Dashboard</span>
+          </button>
+        </nav>
 
+        <div className="mt-auto bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-emerald-300 tracking-widest">SESSION</p>
+            <p className="text-sm font-semibold text-white">{employeeName}</p>
+            {employeeEmail && <p className="text-[11px] text-slate-400 normal-case">{employeeEmail}</p>}
+            <p className="text-[11px] text-slate-400">LOGIN: {formattedLoginAt}</p>
+          </div>
           <button
             onClick={handleLogout}
-            className="bg-rose-500/20 hover:bg-rose-500/35 border border-rose-400/40 hover:border-rose-300/70 text-rose-200 text-xs md:text-sm font-semibold uppercase tracking-wide px-4 py-2 rounded-xl transition-colors"
+            className="w-full py-2 rounded-lg bg-rose-500/15 border border-rose-400/30 text-rose-200 hover:bg-rose-500/25 text-xs font-bold flex items-center justify-center gap-2"
           >
-            Sign Out
+            <LogOut size={14} />
+            <span>SIGN OUT</span>
           </button>
         </div>
+      </aside>
 
-        <div className="flex-1 min-h-0">
-          {/* CARDS GRID */}
-          <div className="h-full overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-
-          {/* MEDICAL PUMPS */}
-          <button
-            onClick={() => router.push("/employee/pumps")}
-            className="group cursor-pointer bg-gradient-to-br from-indigo-500/15 to-indigo-600/5 border border-indigo-500/40 hover:border-indigo-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-indigo-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-indigo-300 text-4xl group-hover:scale-110 transition-transform">🏥</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-indigo-100 transition">Medical Pumps</h2>
-              </div>
-              <p className="text-xs text-indigo-400 font-semibold">Go to pump management →</p>
-            </div>
-          </button>
-
-          {/* CUSTOMERS */}
-          <button
-            onClick={() => router.push("/employee/customers")}
-            className="group cursor-pointer bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border border-emerald-500/40 hover:border-emerald-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-emerald-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-emerald-300 text-4xl group-hover:scale-110 transition-transform">👥</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-emerald-100 transition">Customers</h2>
-              </div>
-              <p className="text-xs text-emerald-400 font-semibold">Go to customer management →</p>
-            </div>
-          </button>
-
-          {/* ORDERS */}
-          <button
-            onClick={() => router.push("/employee/orders?view=create")}
-            className="group cursor-pointer bg-gradient-to-br from-amber-500/15 to-amber-600/5 border border-amber-500/40 hover:border-amber-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-amber-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-amber-300 text-4xl group-hover:scale-110 transition-transform">📦</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-amber-100 transition">New Shipping Orders</h2>
-              </div>
-              <p className="text-xs text-amber-400 font-semibold">Create a new order →</p>
-            </div>
-          </button>
-
-          {/* RETURN REMINDERS */}
-          <button
-            onClick={() => router.push("/employee/pumps-manager")}
-            className={`group cursor-pointer bg-gradient-to-br from-blue-500/15 to-blue-600/5 border border-blue-500/40 hover:border-blue-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-500/20 relative ${
-                         pumpOutCount > 0 ? "heartbeat-card" : ""
-                       }`}
-          >
-            {pumpOutCount > 0 && (
-              <span className={`absolute top-2 right-2 min-w-6 h-6 px-1 rounded-full text-white text-xs font-bold inline-flex items-center justify-center border shadow-lg ${pumpOutBadgeClass}`}>
-                {pumpOutCount}
-              </span>
-            )}
-            <div className="space-y-4">
-              <div className="text-blue-300 text-4xl group-hover:scale-110 transition-transform">🧪</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-blue-100 transition">Pump Out (Clients)</h2>
-              </div>
-              <p className="text-xs text-blue-400 font-semibold">Open pending client pumps →</p>
-            </div>
-          </button>
-
-          {/* PUMP RETURNS */}
-          <button
-            onClick={() => router.push("/employee/pump-returns")}
-            className="group cursor-pointer bg-gradient-to-br from-rose-500/15 to-rose-600/5 border border-rose-500/40 hover:border-rose-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-rose-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-rose-300 text-4xl group-hover:scale-110 transition-transform">↩️</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-rose-100 transition">Pump Returns</h2>
-              </div>
-              <p className="text-xs text-rose-400 font-semibold">View return log →</p>
-            </div>
-          </button>
-
-          {/* PUMP MAINTENANCE */}
-          <button
-            onClick={() => router.push("/employee/pump-maintenance")}
-            className="group cursor-pointer bg-gradient-to-br from-lime-500/15 to-lime-600/5 border border-lime-500/40 hover:border-lime-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-lime-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-lime-300 text-4xl group-hover:scale-110 transition-transform">🧰</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-lime-100 transition">Pump Maintenance</h2>
-              </div>
-              <p className="text-xs text-lime-400 font-semibold">Open maintenance →</p>
-            </div>
-          </button>
-
-          {/* ORDERS ACTIVITY */}
-          <button
-            onClick={() => router.push("/employee/orders?view=activity")}
-            className="group cursor-pointer bg-gradient-to-br from-cyan-500/15 to-cyan-600/5 border border-cyan-500/40 hover:border-cyan-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-cyan-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-cyan-300 text-4xl group-hover:scale-110 transition-transform">🚚</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-cyan-100 transition">Orders Activity</h2>
-              </div>
-              <p className="text-xs text-cyan-400 font-semibold">View orders activity →</p>
-            </div>
-          </button>
-
-          {/* DELIVERY PDF BACKUPS */}
-          <button
-            onClick={() => router.push("/employee/delivery-pdfs")}
-            className="group cursor-pointer bg-gradient-to-br from-cyan-500/15 to-cyan-600/5 border border-cyan-500/40 hover:border-cyan-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-cyan-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-cyan-300 text-4xl group-hover:scale-110 transition-transform">📄</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-cyan-100 transition">Delivery PDF Backups</h2>
-              </div>
-              <p className="text-xs text-cyan-400 font-semibold">Open PDF backups →</p>
-            </div>
-          </button>
-
-          {/* DRIVER TRACKING */}
-          <button
-            onClick={() => router.push("/employee/driver-tracking")}
-            className="group cursor-pointer bg-gradient-to-br from-red-500/15 to-red-600/5 border border-red-500/40 hover:border-red-400/80
-                       rounded-2xl p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-red-500/20"
-          >
-            <div className="space-y-4">
-              <div className="text-red-300 text-4xl group-hover:scale-110 transition-transform">📍</div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-bold group-hover:text-red-100 transition">Driver Tracking</h2>
-              </div>
-              <p className="text-xs text-red-400 font-semibold">View live map →</p>
-            </div>
-          </button>
-
+      <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto">
+        <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white">EMPLOYEE DASHBOARD</h1>
+            <p className="text-sm text-slate-400 mt-1">Select an action to continue managing operations.</p>
           </div>
+
+          <div className="flex items-center gap-3">
+            <div className="relative hidden sm:block">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search functions..."
+                className="w-64 rounded-xl bg-white/5 border border-white/10 py-2 pl-9 pr-3 text-sm text-slate-300 focus:outline-none focus:border-blue-400/50"
+              />
+            </div>
+            <button className="relative p-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white">
+              <Bell size={18} />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full" />
+            </button>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {stats.map((stat) => (
+            <div key={stat.label} className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold tracking-[0.18em] text-slate-500">{stat.label}</p>
+                <p className="text-3xl font-black text-white mt-1">{stat.value}</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-white/5 grid place-items-center text-slate-400">•</div>
+            </div>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-center gap-2">
-          <div className="bg-gradient-to-r from-emerald-500/10 to-slate-500/5 border border-emerald-500/20 rounded-xl px-3 py-2 text-center md:text-left">
-            <p className="text-[11px] text-slate-300 font-medium">
-              Orders created here are visible to drivers by city and pharmacy.
-            </p>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {actionCards.map((action) => (
+            <button
+              key={action.id}
+              onClick={action.onClick}
+              className={`group relative text-left overflow-hidden bg-gradient-to-br border rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${action.cardClass} ${
+                action.heartbeat ? "heartbeat-card" : ""
+              }`}
+            >
+              {action.highlight && (
+                <span className="absolute top-4 right-4 px-2 py-1 rounded-full bg-amber-500 text-white text-[10px] font-black tracking-wider">
+                  PRIORITY
+                </span>
+              )}
 
+              {typeof action.badge === "number" && action.badge > 0 && (
+                <span className={`absolute top-4 right-4 min-w-6 h-6 px-1 rounded-full text-xs font-bold inline-flex items-center justify-center border shadow-lg ${pumpOutBadgeClass}`}>
+                  {action.badge}
+                </span>
+              )}
+
+              <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                {action.emoji}
+              </div>
+
+              <h2 className="text-xl font-black text-white mb-1">{action.title}</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">{action.desc}</p>
+
+              <div className="mt-5 flex items-center justify-between">
+                <span className={`text-[10px] font-black tracking-[0.12em] ${action.textClass}`}>{action.link}</span>
+                <div className="w-7 h-7 rounded-full bg-white/5 grid place-items-center group-hover:translate-x-1 transition-transform">
+                  <ChevronRight size={14} />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <footer className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-[11px] text-slate-300">
+            Orders created here are visible to drivers by city and pharmacy.
+          </div>
           <button
             onClick={() => router.back()}
-            className="text-sm text-slate-500 hover:text-slate-300 transition-colors font-semibold uppercase tracking-wide justify-self-center md:justify-self-end"
+            className="text-xs font-bold tracking-[0.16em] text-slate-500 hover:text-white px-4 py-2 rounded-lg bg-white/5 border border-white/10"
           >
-            ← Back
+            ← BACK
           </button>
-        </div>
-
-      </div>
-    </main>
+        </footer>
+      </main>
+    </div>
   );
 }

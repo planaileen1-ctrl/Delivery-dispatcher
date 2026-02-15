@@ -153,6 +153,34 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /deliverySignatures/{signatureId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && hasFields(["orderId", "signature", "driverSignature", "customerName", "driverName"])
+        && request.resource.data.orderId is string
+        && request.resource.data.signature is string
+        && request.resource.data.driverSignature is string
+        && request.resource.data.customerName is string
+        && request.resource.data.driverName is string;
+
+      allow update, delete: if false;
+    }
+
+    match /pickupSignatures/{signatureId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && hasFields(["orderId", "signature", "driverSignature", "employeeName", "driverName"])
+        && request.resource.data.orderId is string
+        && request.resource.data.signature is string
+        && request.resource.data.driverSignature is string
+        && request.resource.data.employeeName is string
+        && request.resource.data.driverName is string;
+
+      allow update, delete: if false;
+    }
+
     /* ------------------------------
        Licensing / admin operations
     ------------------------------ */
