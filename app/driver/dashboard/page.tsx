@@ -13,6 +13,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, Truck, RotateCcw, Link2, FileText, PackageOpen, AlertTriangle } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
@@ -37,6 +39,13 @@ export default function DriverDashboardPage() {
   const [pharmacyConnectLoading, setPharmacyConnectLoading] = useState(false);
   const [pharmacyConnectError, setPharmacyConnectError] = useState("");
   const [pharmacyConnectSuccess, setPharmacyConnectSuccess] = useState("");
+  const [connectedPharmacy, setConnectedPharmacy] = useState<null | {
+    pharmacyId: string;
+    pharmacyName: string;
+    city?: string;
+    state?: string;
+    country?: string;
+  }>(null);
 
   async function handleConnectPharmacy() {
     setPharmacyConnectError("");
@@ -62,15 +71,57 @@ export default function DriverDashboardPage() {
     }
   }
 
-  // Simulación de carga de datos (debería ser reemplazado por lógica real)
+  // Al cargar, buscar farmacia conectada (Firestore y localStorage)
   useEffect(() => {
-    // Aquí iría la lógica real de carga de órdenes y returns
+    // Cargar farmacia conectada desde localStorage primero (rápido)
+    if (typeof window !== "undefined") {
+      const pharmacyId = localStorage.getItem("PHARMACY_ID");
+      const pharmacyName = localStorage.getItem("PHARMACY_NAME");
+      if (pharmacyId && pharmacyName) {
+        setConnectedPharmacy({ pharmacyId, pharmacyName });
+      }
+    }
+    // Luego, buscar en Firestore (fuente de verdad)
+    const fetchPharmacy = async () => {
+      if (!driverId) return;
+      try {
+        const driverDoc = await getDoc(doc(db, "drivers", driverId));
+        const driverData = driverDoc.exists() ? driverDoc.data() : null;
+        if (driverData && driverData.pharmacyId) {
+          const pharmacyDoc = await getDoc(doc(db, "pharmacies", driverData.pharmacyId));
+          if (pharmacyDoc.exists()) {
+            const p = pharmacyDoc.data();
+            setConnectedPharmacy({
+              pharmacyId: pharmacyDoc.id,
+              pharmacyName: p.pharmacyName || "",
+              city: p.city,
+              state: p.state,
+              country: p.country,
+            });
+            // Actualizar localStorage para futuras cargas rápidas
+            if (typeof window !== "undefined") {
+              localStorage.setItem("PHARMACY_ID", pharmacyDoc.id);
+              localStorage.setItem("PHARMACY_NAME", p.pharmacyName || "");
+              localStorage.setItem("PHARMACY_CITY", p.city || "");
+              localStorage.setItem("PHARMACY_STATE", p.state || "");
+              localStorage.setItem("PHARMACY_COUNTRY", p.country || "");
+            }
+          }
+        } else {
+          setConnectedPharmacy(null);
+        }
+      } catch (e) {
+        setConnectedPharmacy(null);
+      }
+    };
+    fetchPharmacy();
+    // ...otros efectos de carga de datos
     setAvailableOrders([]);
     setActiveOrders([]);
     setReturnTasks([]);
     setHasPendingReturns(false);
     setPendingReturnPumpCount(0);
-  }, []);
+  }, [driverId]);
 
   return (
     <main className="min-h-screen bg-[#020617] text-white flex justify-center py-10 px-4">
@@ -169,29 +220,44 @@ export default function DriverDashboardPage() {
         )}
         {dashboardSection === "connect" && (
           <div className="bg-black/40 border border-white/10 rounded-xl p-6 space-y-4">
-            <h2 className="font-semibold text-indigo-300 inline-flex items-center gap-2">
-              <Link2 size={16} /> Connect Pharmacy
-            </h2>
-            <input
-              placeholder="Enter 4-digit Pharmacy PIN"
-              maxLength={4}
-              value={pharmacyPin}
-              onChange={e => setPharmacyPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              className="w-full p-2 rounded bg-black border border-white/10"
-              disabled={pharmacyConnectLoading}
-            />
-            <button
-              className="w-full bg-indigo-600 py-2 rounded transition-all duration-200 disabled:opacity-60"
-              onClick={handleConnectPharmacy}
-              disabled={pharmacyConnectLoading}
-            >
-              {pharmacyConnectLoading ? "Connecting..." : "CONNECT PHARMACY"}
-            </button>
-            {pharmacyConnectError && (
-              <p className="text-xs text-red-400 font-semibold">{pharmacyConnectError}</p>
-            )}
-            {pharmacyConnectSuccess && (
-              <p className="text-xs text-green-400 font-semibold">{pharmacyConnectSuccess}</p>
+            {connectedPharmacy ? (
+              <div className="space-y-2">
+                <h2 className="font-semibold text-green-300 inline-flex items-center gap-2">
+                  <Link2 size={16} /> Connected to Pharmacy
+                </h2>
+                <div className="text-white/90 font-bold text-lg">{connectedPharmacy.pharmacyName}</div>
+                {connectedPharmacy.city && (
+                  <div className="text-xs text-white/50">{connectedPharmacy.city}, {connectedPharmacy.state}, {connectedPharmacy.country}</div>
+                )}
+                <p className="text-xs text-green-400 font-semibold">You are already connected.</p>
+              </div>
+            ) : (
+              <>
+                <h2 className="font-semibold text-indigo-300 inline-flex items-center gap-2">
+                  <Link2 size={16} /> Connect Pharmacy
+                </h2>
+                <input
+                  placeholder="Enter 4-digit Pharmacy PIN"
+                  maxLength={4}
+                  value={pharmacyPin}
+                  onChange={e => setPharmacyPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  className="w-full p-2 rounded bg-black border border-white/10"
+                  disabled={pharmacyConnectLoading}
+                />
+                <button
+                  className="w-full bg-indigo-600 py-2 rounded transition-all duration-200 disabled:opacity-60"
+                  onClick={handleConnectPharmacy}
+                  disabled={pharmacyConnectLoading}
+                >
+                  {pharmacyConnectLoading ? "Connecting..." : "CONNECT PHARMACY"}
+                </button>
+                {pharmacyConnectError && (
+                  <p className="text-xs text-red-400 font-semibold">{pharmacyConnectError}</p>
+                )}
+                {pharmacyConnectSuccess && (
+                  <p className="text-xs text-green-400 font-semibold">{pharmacyConnectSuccess}</p>
+                )}
+              </>
             )}
           </div>
         )}
