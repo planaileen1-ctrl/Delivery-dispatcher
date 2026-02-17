@@ -128,6 +128,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /drivers/{driverId}/pharmacies/{connectionId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && hasFields(["pharmacyId"])
+        && request.resource.data.pharmacyId is string;
+
+      allow update: if isSignedIn();
+
+      allow delete: if isSignedIn();
+    }
+
     /* ------------------------------
        Audit / legal artifacts
     ------------------------------ */

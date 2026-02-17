@@ -420,7 +420,8 @@ export default function DriverDashboardPage() {
       loadConnectedPharmacies();
     } catch (err) {
       console.error("handleAddPharmacy error:", err);
-      setAddPharmacyError("Error connecting to pharmacy.");
+      const code = (err as any)?.code ? ` (${String((err as any).code)})` : "";
+      setAddPharmacyError(`Error connecting to pharmacy${code}.`);
     } finally {
       setLoading(false);
       setTimeout(() => {
