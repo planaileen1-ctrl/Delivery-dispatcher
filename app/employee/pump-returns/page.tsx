@@ -295,6 +295,8 @@ export default function PumpReturnsPage() {
               status: "IN_MAINTENANCE",
               maintenanceDue: true,
               maintenanceDueAt: serverTimestamp(),
+              maintenanceUpdatedAt: serverTimestamp(),
+              maintenanceCompletedAt: null,
               maintenanceStatus: {
                 cleaned: false,
                 calibrated: false,

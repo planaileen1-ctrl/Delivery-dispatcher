@@ -543,9 +543,18 @@ export default function EmployeeOrdersPage() {
 
       for (const pumpId of pumpIdsToRelease) {
         try {
-          await updateDoc(doc(db, "pumps", pumpId), {
-            status: "AVAILABLE",
-          });
+          const pumpRef = doc(db, "pumps", pumpId);
+          const pumpSnap = await getDoc(pumpRef);
+          const pumpData = (pumpSnap.data() || {}) as any;
+          const isInMaintenance =
+            pumpData.maintenanceDue === true ||
+            String(pumpData.status || "").trim().toUpperCase() === "IN_MAINTENANCE";
+
+          if (!isInMaintenance) {
+            await updateDoc(pumpRef, {
+              status: "AVAILABLE",
+            });
+          }
         } catch (pumpErr) {
           console.warn("Failed to release pump on order delete:", pumpId, pumpErr);
         }

@@ -52,6 +52,7 @@ export default function DriverTrackingPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [relativeTimeNow, setRelativeTimeNow] = useState(Date.now());
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -158,8 +159,8 @@ export default function DriverTrackingPage() {
 
       // Extra polling interval every 8 seconds to refresh UI
       updateIntervalRef.current = setInterval(() => {
-        // Trigger a re-render to update timestamps and UI
-        setDrivers((prev) => [...prev]);
+        // Refresh only relative-time labels without resetting map state
+        setRelativeTimeNow(Date.now());
       }, 8000);
     } catch (err) {
       console.error("Tracking setup error:", err);
@@ -185,7 +186,7 @@ export default function DriverTrackingPage() {
 
   const getRelativeTime = (timestamp?: number) => {
     if (!timestamp) return "Unknown";
-    const now = Date.now();
+    const now = relativeTimeNow;
     const diff = now - timestamp;
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(seconds / 60);

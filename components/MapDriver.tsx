@@ -27,6 +27,27 @@ const MapComponent = ({ drivers }: { drivers: Driver[] }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
+  const hasUserInteractedRef = useRef(false);
+  const hasAutoCenteredRef = useRef(false);
+
+  function handleRecenterMap() {
+    if (!mapRef.current || !window.L) return;
+
+    const L = window.L;
+    const driversWithLocation = drivers.filter(
+      (d) => d.lat !== undefined && d.lng !== undefined
+    );
+
+    if (driversWithLocation.length > 0) {
+      const bounds = L.latLngBounds(driversWithLocation.map((d) => [d.lat!, d.lng!]));
+      mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+      hasAutoCenteredRef.current = true;
+      return;
+    }
+
+    mapRef.current.setView(ECUADOR_CENTER, 6);
+    hasAutoCenteredRef.current = false;
+  }
 
   async function ensureLeaflet() {
     if (typeof window === "undefined") return null;
@@ -82,6 +103,10 @@ const MapComponent = ({ drivers }: { drivers: Driver[] }) => {
           }).addTo(mapRef.current);
 
           markersLayerRef.current = L.layerGroup().addTo(mapRef.current);
+
+          mapRef.current.on("dragstart zoomstart", () => {
+            hasUserInteractedRef.current = true;
+          });
         }
 
         const colorMap: { [key: string]: string } = {
@@ -121,10 +146,18 @@ const MapComponent = ({ drivers }: { drivers: Driver[] }) => {
         );
 
         if (driversWithLocation.length > 0) {
-          const bounds = L.latLngBounds(driversWithLocation.map((d) => [d.lat!, d.lng!]));
-          mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+          const shouldAutoCenter =
+            !hasAutoCenteredRef.current || !hasUserInteractedRef.current;
+
+          if (shouldAutoCenter) {
+            const bounds = L.latLngBounds(driversWithLocation.map((d) => [d.lat!, d.lng!]));
+            mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+            hasAutoCenteredRef.current = true;
+          }
         } else {
-          mapRef.current.setView(ECUADOR_CENTER, 6);
+          if (!hasUserInteractedRef.current) {
+            mapRef.current.setView(ECUADOR_CENTER, 6);
+          }
         }
 
         setTimeout(() => {
@@ -147,19 +180,31 @@ const MapComponent = ({ drivers }: { drivers: Driver[] }) => {
         mapRef.current = null;
       }
       markersLayerRef.current = null;
+      hasUserInteractedRef.current = false;
+      hasAutoCenteredRef.current = false;
     };
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100%",
-        height: "24rem", // h-96
-        borderRadius: "0.5rem",
-        backgroundColor: "#111827",
-      }}
-    />
+    <div className="relative">
+      <button
+        type="button"
+        onClick={handleRecenterMap}
+        className="absolute right-3 top-3 z-[1000] rounded-md border border-white/20 bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800"
+      >
+        Recenter Map
+      </button>
+
+      <div
+        ref={containerRef}
+        style={{
+          width: "100%",
+          height: "24rem", // h-96
+          borderRadius: "0.5rem",
+          backgroundColor: "#111827",
+        }}
+      />
+    </div>
   );
 };
 
