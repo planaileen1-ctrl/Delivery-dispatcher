@@ -70,6 +70,14 @@ export default function AdminLoginPage() {
       <div className="fixed bottom-0 right-0 w-96 h-96 bg-emerald-500/5 blur-3xl rounded-full -z-10" />
       
       <div className="flex flex-col items-center gap-8">
+        <div className="w-full max-w-xs flex justify-start">
+          <button
+            onClick={() => window.history.back()}
+            className="text-xs uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors duration-300 font-semibold mt-2"
+          >
+            ← BACK
+          </button>
+        </div>
         
         {/* ICON */}
         <div className="relative">
@@ -130,13 +138,7 @@ export default function AdminLoginPage() {
           ))}
         </div>
 
-        {/* Back button */}
-        <button
-          onClick={() => window.history.back()}
-          className="text-xs uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors duration-300 font-semibold mt-2"
-        >
-          ← BACK
-        </button>
+        
       </div>
     </main>
   );

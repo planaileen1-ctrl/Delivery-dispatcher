@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+// Link replaced by inline button for top navigation
 import { useRouter } from "next/navigation";
 import { applyLegacySessionFromProfile, loginWithEmailPassword } from "@/lib/authV2";
 
@@ -32,6 +32,14 @@ export default function LoginV2Page() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#020617] text-white px-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-xl p-8">
+        <div className="flex justify-start mb-3">
+          <button
+            onClick={() => router.push('/auth/login')}
+            className="text-xs text-indigo-300 hover:text-indigo-200 px-3 py-1 rounded bg-white/5 border border-white/8"
+          >
+            ← Go to current login
+          </button>
+        </div>
         <h1 className="text-2xl font-semibold mb-2 text-center">Secure Login (V2)</h1>
         <p className="text-sm text-slate-400 text-center mb-6">
           New parallel login. Legacy PIN login remains available.
@@ -75,14 +83,7 @@ export default function LoginV2Page() {
           </button>
         </form>
 
-        <div className="mt-5 text-sm text-slate-400 text-center">
-          <p>
-            Need legacy PIN login?{" "}
-            <Link href="/auth/login" className="text-indigo-400 hover:text-indigo-300 underline">
-              Go to current login
-            </Link>
-          </p>
-        </div>
+        
       </div>
     </main>
   );

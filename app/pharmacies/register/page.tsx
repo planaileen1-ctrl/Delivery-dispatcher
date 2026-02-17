@@ -184,6 +184,14 @@ export default function RegisterPharmacyPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#020617] text-white">
       <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-xl p-8 space-y-5">
+        <div className="flex justify-start">
+          <button
+            onClick={() => router.back()}
+            className="text-xs text-white/70 hover:text-white px-3 py-1 rounded bg-white/5 border border-white/10"
+          >
+            ← BACK
+          </button>
+        </div>
         <h1 className="text-2xl font-bold text-center">REGISTER PHARMACY</h1>
 
         <div>
@@ -280,12 +288,7 @@ export default function RegisterPharmacyPage() {
           {loading ? "REGISTERING..." : "REGISTER PHARMACY"}
         </button>
 
-        <button
-          onClick={() => router.back()}
-          className="w-full text-xs text-white/50"
-        >
-          ← BACK
-        </button>
+      
       </div>
     </div>
   );

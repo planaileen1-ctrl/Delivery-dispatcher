@@ -213,6 +213,15 @@ export default function RegisterDriverPage() {
     <main className="min-h-screen flex items-center justify-center bg-[#020617] text-white">
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full space-y-3">
 
+        <div className="flex justify-start">
+          <button
+            onClick={() => router.back()}
+            className="text-xs text-white/70 hover:text-white px-3 py-1 rounded bg-white/5 border border-white/10"
+          >
+            ← BACK
+          </button>
+        </div>
+
         <h1 className="text-xl font-semibold text-center">REGISTER DRIVER</h1>
 
         <input
@@ -270,12 +279,7 @@ export default function RegisterDriverPage() {
           {loading ? "REGISTERING..." : "REGISTER DRIVER"}
         </button>
 
-        <button
-          onClick={() => router.back()}
-          className="w-full text-xs text-white/50"
-        >
-          ← BACK
-        </button>
+      
       </div>
     </main>
   );

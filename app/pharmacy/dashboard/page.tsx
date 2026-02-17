@@ -446,6 +446,14 @@ export default function PharmacyDashboardPage() {
       </aside>
 
       <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto">
+        <div className="mb-6">
+          <button
+            onClick={() => router.back()}
+            className="text-xs font-bold tracking-[0.16em] text-slate-500 hover:text-white px-3 py-2 rounded-lg bg-white/5 border border-white/10"
+          >
+            ← BACK
+          </button>
+        </div>
         <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-black text-white">PHARMACY ADMIN DASHBOARD</h1>
@@ -522,12 +530,6 @@ export default function PharmacyDashboardPage() {
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-[11px] text-slate-300">
             Pharmacy admin has full edit access across the operational modules.
           </div>
-          <button
-            onClick={() => router.back()}
-            className="text-xs font-bold tracking-[0.16em] text-slate-500 hover:text-white px-4 py-2 rounded-lg bg-white/5 border border-white/10"
-          >
-            ← BACK
-          </button>
         </footer>
       </main>
     </div>

@@ -218,6 +218,15 @@ export default function EmployeeDashboardPage() {
           </p>
         </div>
 
+        <div className="mt-4">
+          <button
+            onClick={() => router.back()}
+            className="text-sm text-slate-400 hover:text-slate-200 font-semibold uppercase tracking-wide px-3 py-1 rounded bg-white/5 border border-white/8"
+          >
+            ← Back
+          </button>
+        </div>
+
         <div className="bg-gradient-to-r from-slate-900/70 to-slate-800/40 border border-slate-700/60 rounded-2xl p-3 md:p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="space-y-1">
             <p className="text-xs uppercase tracking-widest text-emerald-300/90 font-semibold">
@@ -398,12 +407,7 @@ export default function EmployeeDashboardPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => router.back()}
-            className="text-sm text-slate-500 hover:text-slate-300 transition-colors font-semibold uppercase tracking-wide justify-self-center md:justify-self-end"
-          >
-            ← Back
-          </button>
+          
         </div>
 
       </div>
