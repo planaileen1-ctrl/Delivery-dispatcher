@@ -32,6 +32,35 @@ export default function DriverDashboardPage() {
   const [availableOrders, setAvailableOrders] = useState<any[]>([]);
   const [activeOrders, setActiveOrders] = useState<any[]>([]);
   const [returnTasks, setReturnTasks] = useState<any[]>([]);
+  // Conexión farmacia
+  const [pharmacyPin, setPharmacyPin] = useState("");
+  const [pharmacyConnectLoading, setPharmacyConnectLoading] = useState(false);
+  const [pharmacyConnectError, setPharmacyConnectError] = useState("");
+  const [pharmacyConnectSuccess, setPharmacyConnectSuccess] = useState("");
+
+  async function handleConnectPharmacy() {
+    setPharmacyConnectError("");
+    setPharmacyConnectSuccess("");
+    if (!pharmacyPin || pharmacyPin.length !== 4) {
+      setPharmacyConnectError("Enter a valid 4-digit PIN");
+      return;
+    }
+    if (!driverId) {
+      setPharmacyConnectError("Driver not identified");
+      return;
+    }
+    setPharmacyConnectLoading(true);
+    try {
+      const { connectDriverToPharmacy } = await import("@/lib/driverPharmacy");
+      const result = await connectDriverToPharmacy(driverId, pharmacyPin);
+      setPharmacyConnectSuccess(`Connected to pharmacy: ${result.pharmacyName}`);
+      setPharmacyPin("");
+    } catch (err: any) {
+      setPharmacyConnectError(err.message || "Connection failed");
+    } finally {
+      setPharmacyConnectLoading(false);
+    }
+  }
 
   // Simulación de carga de datos (debería ser reemplazado por lógica real)
   useEffect(() => {
@@ -146,11 +175,24 @@ export default function DriverDashboardPage() {
             <input
               placeholder="Enter 4-digit Pharmacy PIN"
               maxLength={4}
+              value={pharmacyPin}
+              onChange={e => setPharmacyPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
               className="w-full p-2 rounded bg-black border border-white/10"
+              disabled={pharmacyConnectLoading}
             />
-            <button className="w-full bg-indigo-600 py-2 rounded transition-all duration-200">
-              CONNECT PHARMACY
+            <button
+              className="w-full bg-indigo-600 py-2 rounded transition-all duration-200 disabled:opacity-60"
+              onClick={handleConnectPharmacy}
+              disabled={pharmacyConnectLoading}
+            >
+              {pharmacyConnectLoading ? "Connecting..." : "CONNECT PHARMACY"}
             </button>
+            {pharmacyConnectError && (
+              <p className="text-xs text-red-400 font-semibold">{pharmacyConnectError}</p>
+            )}
+            {pharmacyConnectSuccess && (
+              <p className="text-xs text-green-400 font-semibold">{pharmacyConnectSuccess}</p>
+            )}
           </div>
         )}
       </div>
