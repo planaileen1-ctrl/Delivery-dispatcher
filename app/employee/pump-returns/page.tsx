@@ -84,6 +84,7 @@ export default function PumpReturnsPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "pending" | "returned">("all");
   const [pumpSearch, setPumpSearch] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   useEffect(() => {
     let unsubscribe: null | (() => void) = null;
@@ -374,127 +375,109 @@ export default function PumpReturnsPage() {
           </button>
         </div>
 
-        <div className="space-y-4">
-          {filteredOrders.length === 0 && (
-            <p className="text-sm text-white/60 text-center">
-              No return records yet.
-            </p>
-          )}
+        {/* New two-column layout: left = customer list, right = history/details */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Left: customer list */}
+          <div className="space-y-2">
+            {filteredOrders.length === 0 && (
+              <p className="text-sm text-white/60 text-center">No return records yet.</p>
+            )}
 
-          {filteredOrders.map((o) => (
-            <div
-              key={o.id}
-              className="bg-black/40 border border-white/10 rounded-xl p-6 space-y-2"
-            >
-              <p className="text-sm font-semibold">
-                {o.customerName} — Order {o.id}
-              </p>
-              <p className="text-xs text-white/60">
-                Driver: {o.driverName || "Unassigned"}
-              </p>
-              <p className="text-xs text-white/50">
-                Last update: {formatDate(o.statusUpdatedAt || o.createdAt)}
-              </p>
+            {/** Build unique customer list from filteredOrders */}
+            {(() => {
+              const map = new Map<string, { customerId: string; customerName: string; orders: ReturnOrder[] }>();
+              filteredOrders.forEach((o) => {
+                const id = o.customerId || o.id;
+                if (!map.has(id)) map.set(id, { customerId: id, customerName: o.customerName || "Unknown", orders: [] });
+                map.get(id)!.orders.push(o);
+              });
 
-              <div className="space-y-1">
-                <p className="text-xs text-white/60">Previous pumps</p>
-                <p className="text-xs">
-                  {(o.previousPumps || o.customerPreviousPumps || []).join(", ") || "—"}
-                </p>
-              </div>
+              const customers = Array.from(map.values());
 
-              <div className="space-y-1">
-                <p className="text-xs text-white/60">Return status</p>
-                {o.previousPumpsStatus && o.previousPumpsStatus.length > 0 ? (
-                  <div className="space-y-2">
-                    {getPendingReturnedPumps(o).length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setAllPendingSelection(o, true)}
-                          className="text-[11px] px-2 py-1 rounded border border-white/20 hover:border-white/40"
-                        >
-                          Select all
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAllPendingSelection(o, false)}
-                          className="text-[11px] px-2 py-1 rounded border border-white/20 hover:border-white/40"
-                        >
-                          Clear all
-                        </button>
-                      </div>
-                    )}
-
-                    {o.previousPumpsStatus.map((entry) => (
-                      <div
-                        key={entry.pumpNumber}
-                        className="border border-white/10 rounded p-2"
-                      >
-                        <p className="text-xs">
-                          Pump #{entry.pumpNumber}: {entry.returned ? "Returned" : "Not returned"}
-                        </p>
-                        {!entry.returned && (
-                          <p className="text-xs text-white/80">
-                            Reason: {entry.reason || "—"}
-                          </p>
-                        )}
-
-                        {entry.returned && (
-                          <div className="mt-2">
-                            {isPumpReturnedToPharmacy(o, entry.pumpNumber) ? (
-                              <p className="text-xs text-green-400">
-                                Returned to pharmacy
-                              </p>
-                            ) : (
-                              <label className="flex items-center gap-2 text-xs">
-                                <input
-                                  type="checkbox"
-                                  checked={
-                                    selectedPumpsByOrder[o.id]?.[String(entry.pumpNumber)] ?? true
-                                  }
-                                  onChange={(e) => {
-                                    const pumpNumber = String(entry.pumpNumber);
-                                    setSelectedPumpsByOrder((prev) => ({
-                                      ...prev,
-                                      [o.id]: {
-                                        ...(prev[o.id] || {}),
-                                        [pumpNumber]: e.target.checked,
-                                      },
-                                    }));
-                                  }}
-                                />
-                                Mark pump #{entry.pumpNumber} as returned to pharmacy
-                              </label>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {getPendingReturnedPumps(o).length > 0 && (
-                      <button
-                        type="button"
-                        disabled={loadingOrderId === o.id}
-                        onClick={() => handleConfirmReturn(o)}
-                        className="text-xs px-3 py-2 bg-amber-600 rounded disabled:opacity-50"
-                      >
-                        {loadingOrderId === o.id
-                          ? "Saving..."
-                          : "Mark selected returned to pharmacy"}
-                      </button>
-                    )}
+              return customers.map((c) => (
+                <button
+                  key={c.customerId}
+                  onClick={() => setSelectedCustomerId(c.customerId)}
+                  className={`w-full text-left px-4 py-3 rounded-lg border transition-colors text-sm ${
+                    selectedCustomerId === c.customerId ? "bg-white/10 border-white/30" : "bg-black/30 border-white/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold">{c.customerName}</div>
+                      <div className="text-xs text-white/60">{c.orders.length} order(s)</div>
+                    </div>
+                    <div className="text-xs text-white/50">→</div>
                   </div>
-                ) : (
-                  <p className="text-xs">
-                    {o.previousPumpsReturned === true && "Returned"}
-                    {o.previousPumpsReturned === false && "Not returned"}
-                    {o.previousPumpsReturned == null && "Pending"}
-                  </p>
-                )}
+                </button>
+              ));
+            })()}
+          </div>
+
+          {/* Right: details / history (span 2 cols on md) */}
+          <div className="md:col-span-2 space-y-4">
+            {(selectedCustomerId ? filteredOrders.filter((o) => (o.customerId || o.id) === selectedCustomerId) : filteredOrders).map((o) => (
+              <div key={o.id} className="bg-black/40 border border-white/10 rounded-xl p-6 space-y-2">
+                <p className="text-sm font-semibold">{o.customerName} — Order {o.id}</p>
+                <p className="text-xs text-white/60">Driver: {o.driverName || "Unassigned"}</p>
+                <p className="text-xs text-white/50">Last update: {formatDate(o.statusUpdatedAt || o.createdAt)}</p>
+
+                <div className="space-y-1">
+                  <p className="text-xs text-white/60">Previous pumps</p>
+                  <p className="text-xs">{(o.previousPumps || o.customerPreviousPumps || []).join(", ") || "—"}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs text-white/60">Return status</p>
+                  {o.previousPumpsStatus && o.previousPumpsStatus.length > 0 ? (
+                    <div className="space-y-2">
+                      {getPendingReturnedPumps(o).length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setAllPendingSelection(o, true)} className="text-[11px] px-2 py-1 rounded border border-white/20 hover:border-white/40">Select all</button>
+                          <button type="button" onClick={() => setAllPendingSelection(o, false)} className="text-[11px] px-2 py-1 rounded border border-white/20 hover:border-white/40">Clear all</button>
+                        </div>
+                      )}
+
+                      {o.previousPumpsStatus.map((entry) => (
+                        <div key={entry.pumpNumber} className="border border-white/10 rounded p-2">
+                          <p className="text-xs">Pump #{entry.pumpNumber}: {entry.returned ? "Returned" : "Not returned"}</p>
+                          {!entry.returned && (<p className="text-xs text-white/80">Reason: {entry.reason || "—"}</p>)}
+
+                          {entry.returned && (
+                            <div className="mt-2">
+                              {isPumpReturnedToPharmacy(o, entry.pumpNumber) ? (
+                                <p className="text-xs text-green-400">Returned to pharmacy</p>
+                              ) : (
+                                <label className="flex items-center gap-2 text-xs">
+                                  <input type="checkbox" checked={selectedPumpsByOrder[o.id]?.[String(entry.pumpNumber)] ?? true} onChange={(e) => {
+                                    const pumpNumber = String(entry.pumpNumber);
+                                    setSelectedPumpsByOrder((prev) => ({ ...prev, [o.id]: { ...(prev[o.id] || {}), [pumpNumber]: e.target.checked } }));
+                                  }} />
+                                  Mark pump #{entry.pumpNumber} as returned to pharmacy
+                                </label>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {getPendingReturnedPumps(o).length > 0 && (
+                        <button type="button" disabled={loadingOrderId === o.id} onClick={() => handleConfirmReturn(o)} className="text-xs px-3 py-2 bg-amber-600 rounded disabled:opacity-50">
+                          {loadingOrderId === o.id ? "Saving..." : "Mark selected returned to pharmacy"}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs">
+                      {o.previousPumpsReturned === true && "Returned"}
+                      {o.previousPumpsReturned === false && "Not returned"}
+                      {o.previousPumpsReturned == null && "Pending"}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         <div className="text-center">
