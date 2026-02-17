@@ -41,6 +41,7 @@ export default function EmployeeDashboardPage() {
   const [pumpOutCount, setPumpOutCount] = useState(0);
   const [pumpOutOver20Count, setPumpOutOver20Count] = useState(0);
   const [pumpOutOver30Count, setPumpOutOver30Count] = useState(0);
+  const [pumpReturnsPendingCount, setPumpReturnsPendingCount] = useState(0);
 
   useEffect(() => {
     const name = localStorage.getItem("EMPLOYEE_NAME") || "Unknown Employee";
@@ -69,6 +70,7 @@ export default function EmployeeDashboardPage() {
           setPumpOutCount(0);
           setPumpOutOver20Count(0);
           setPumpOutOver30Count(0);
+          setPumpReturnsPendingCount(0);
           return;
         }
 
@@ -165,11 +167,36 @@ export default function EmployeeDashboardPage() {
         setPumpOutCount(total);
         setPumpOutOver20Count(over20);
         setPumpOutOver30Count(over30);
+
+        const pendingReturnsCount = orders.reduce((count, order: any) => {
+          const returnedByCustomer = (order.previousPumpsStatus || [])
+            .filter((entry: any) => entry?.returned === true)
+            .map((entry: any) => String(entry?.pumpNumber || "").trim())
+            .filter(Boolean);
+
+          if (returnedByCustomer.length === 0) return count;
+
+          const returnedToPharmacySet = new Set(
+            (order.previousPumpsReturnToPharmacy || [])
+              .filter((entry: any) => entry?.returnedToPharmacy === true)
+              .map((entry: any) => String(entry?.pumpNumber || "").trim())
+              .filter(Boolean)
+          );
+
+          const pendingForOrder = returnedByCustomer.filter(
+            (pumpNumber: string) => !returnedToPharmacySet.has(pumpNumber)
+          ).length;
+
+          return count + pendingForOrder;
+        }, 0);
+
+        setPumpReturnsPendingCount(pendingReturnsCount);
       } catch (err) {
         console.error("Failed to load pump out count:", err);
         setPumpOutCount(0);
         setPumpOutOver20Count(0);
         setPumpOutOver30Count(0);
+        setPumpReturnsPendingCount(0);
       }
     })();
   }, []);
@@ -270,6 +297,8 @@ export default function EmployeeDashboardPage() {
       cardClass:
         "from-rose-500/15 to-rose-600/5 border-rose-500/30 hover:border-rose-400/70 hover:shadow-rose-500/20",
       textClass: "text-rose-400",
+      badge: pumpReturnsPendingCount,
+      heartbeat: pumpReturnsPendingCount > 0,
     },
     {
       id: "maintenance",
