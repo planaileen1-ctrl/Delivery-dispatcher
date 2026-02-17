@@ -964,29 +964,34 @@ export default function DriverDashboardPage() {
             <div className="flex items-center gap-3">
               <NotificationBell userId={driverId} role="DRIVER" />
               <div className="text-right text-xs text-white/60">
-                <div>Notifications: <span className="font-semibold text-white/80">{notifPermission}</span></div>
-                {notifToken ? (
-                  <div className="mt-1 text-[11px]">Token: saved •••{notifToken.slice(-6)}</div>
-                ) : (
-                  <div className="mt-1">Token: —</div>
-                )}
-                <div className="mt-1">
-                  <button
-                    onClick={async () => {
-                      const token = await requestNotificationPermission();
-                      if (token) {
-                        setNotifToken(token);
-                        setNotifPermission("granted");
-                        await saveNotificationToken(token, driverId, "DRIVER");
-                      } else {
-                        if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
-                      }
-                    }}
-                    className="text-xs underline"
-                  >
-                    Request permission / Refresh token
-                  </button>
+                <div className="inline-flex items-center gap-3">
+                  <div>
+                    Notifications: <span className="font-semibold text-white/80">{notifPermission}</span>
+                  </div>
+                  {notifToken && notifPermission === "granted" && (
+                    <div className="text-[11px] text-white/60">Saved •••{notifToken.slice(-6)}</div>
+                  )}
                 </div>
+
+                {(notifPermission !== "granted" || !notifToken) && (
+                  <div className="mt-2">
+                    <button
+                      onClick={async () => {
+                        const token = await requestNotificationPermission();
+                        if (token) {
+                          setNotifToken(token);
+                          setNotifPermission("granted");
+                          await saveNotificationToken(token, driverId, "DRIVER");
+                        } else {
+                          if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
+                        }
+                      }}
+                      className="text-xs px-2 py-1 bg-white/5 rounded hover:bg-white/8"
+                    >
+                      Request permission / Refresh token
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -23,14 +23,14 @@ export default function NotificationBell({ userId, role, pharmacyId }: Notificat
     const initNotifications = async () => {
       if (isIos && !supportsPush) {
         setUnsupportedMessage(
-          "iOS: web-push no soportado en esta versión del sistema. Abra esta página en Safari o actualice a iOS 16.4+."
+          "iOS: web-push not supported on this OS version. Open this page in Safari or upgrade to iOS 16.4+."
         );
         return;
       }
 
       if (isInAppBrowser) {
         setUnsupportedMessage(
-          "Parece que estás en el navegador dentro de otra app. Abre este enlace en Safari/Chrome para activar notificaciones."
+          "It looks like you're in an in-app browser. Open this link in Safari/Chrome to enable notifications."
         );
         // still allow user to click to open in external browser
         return;
@@ -53,7 +53,7 @@ export default function NotificationBell({ userId, role, pharmacyId }: Notificat
   if (!hasPermission) {
     return (
       <div>
-        {unsupportedMessage ? (
+          {unsupportedMessage ? (
           <div className="text-xs text-yellow-300">
             <p>{unsupportedMessage}</p>
             <div className="mt-1">
@@ -67,7 +67,7 @@ export default function NotificationBell({ userId, role, pharmacyId }: Notificat
                 }}
                 className="text-xs underline"
               >
-                Abrir en navegador externo
+                Open in external browser
               </button>
             </div>
           </div>
@@ -81,7 +81,7 @@ export default function NotificationBell({ userId, role, pharmacyId }: Notificat
               }
             }}
             className="relative p-2 rounded-lg hover:bg-white/10 transition-colors"
-            title="Activar notificaciones"
+            title="Enable notifications"
           >
             <Bell size={20} className="text-slate-400" />
           </button>
