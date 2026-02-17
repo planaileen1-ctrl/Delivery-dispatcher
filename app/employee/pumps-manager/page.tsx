@@ -666,19 +666,29 @@ export default function PumpsManagerPage() {
                       ? true
                       : String(item.driverName || "Unknown Driver").trim() === transferDriverFilter
                   )
-                  .map((item) => (
-                  <div
-                    key={`${item.orderId}-${item.pumpNumber}-${toMs(item.deliveredAt) || toMs(item.deliveredAtISO)}`}
-                    className="rounded-lg border border-white/10 bg-black/20 p-3"
-                  >
-                    <p className="text-xs text-white/80">
-                      Pump #{item.pumpNumber} • {formatDateTime(item.deliveredAt, item.deliveredAtISO)}
-                    </p>
-                    <p className="text-xs text-white/60">Driver: {item.driverName || "Not assigned"}</p>
-                    <p className="text-xs text-white/60">Received by: {item.receivedByName || "Not recorded"}</p>
-                    <p className="text-[11px] text-white/40">Order: {item.orderId}</p>
-                  </div>
-                ))}
+                  .map((item) => {
+                    // Find the customer for this order
+                    const order = orders.find((o) => o.id === item.orderId);
+                    let customerName = "Unknown Customer";
+                    if (order && order.customerId) {
+                      const customer = customers.find((c) => c.id === order.customerId);
+                      if (customer) customerName = customer.name || customerName;
+                    }
+                    return (
+                      <div
+                        key={`${item.orderId}-${item.pumpNumber}-${toMs(item.deliveredAt) || toMs(item.deliveredAtISO)}`}
+                        className="rounded-lg border border-white/10 bg-black/20 p-3"
+                      >
+                        <p className="text-xs text-white/80">
+                          Pump #{item.pumpNumber} • {formatDateTime(item.deliveredAt, item.deliveredAtISO)}
+                        </p>
+                        <p className="text-xs text-white/60">Driver: {item.driverName || "Not assigned"}</p>
+                        <p className="text-xs text-white/60">Received by: {item.receivedByName || "Not recorded"}</p>
+                        <p className="text-xs text-cyan-300">Client: {customerName}</p>
+                        <p className="text-[11px] text-white/40">Order: {item.orderId}</p>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           </div>
