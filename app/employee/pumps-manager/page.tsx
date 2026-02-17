@@ -50,6 +50,8 @@ type OutstandingPump = {
   deliveredAtISO?: string;
   driverName?: string;
   receivedByName?: string;
+  latestNonReturnReason?: string;
+  latestNonReturnAt?: any;
 };
 
 type PumpTransfer = {
@@ -177,6 +179,10 @@ export default function PumpsManagerPage() {
     });
 
     const byCustomer = new Map<string, Map<string, OutstandingPump>>();
+    const reasonsByCustomer = new Map<
+      string,
+      Map<string, { reason: string; recordedAt?: any; recordedAtISO?: string }>
+    >();
 
     sortedOrders.forEach((order) => {
       const customerId = String(order.customerId || "").trim();
@@ -186,7 +192,12 @@ export default function PumpsManagerPage() {
         byCustomer.set(customerId, new Map<string, OutstandingPump>());
       }
 
+      if (!reasonsByCustomer.has(customerId)) {
+        reasonsByCustomer.set(customerId, new Map<string, { reason: string; recordedAt?: any; recordedAtISO?: string }>());
+      }
+
       const pumpMap = byCustomer.get(customerId)!;
+      const reasonMap = reasonsByCustomer.get(customerId)!;
       const rawStatus = String(order.status || "").trim().toUpperCase();
       const isDelivered = rawStatus === "DELIVERED" || !!order.deliveredAt || !!order.deliveredAtISO;
 
@@ -205,6 +216,19 @@ export default function PumpsManagerPage() {
           });
         });
       }
+
+      (order.previousPumpsStatus || [])
+        .filter((entry) => !entry.returned && String(entry.reason || "").trim().length > 0)
+        .forEach((entry) => {
+          const pumpNumber = String(entry.pumpNumber || "").trim();
+          if (!pumpNumber) return;
+
+          reasonMap.set(pumpNumber, {
+            reason: String(entry.reason || "").trim(),
+            recordedAt: order.deliveredAt || order.statusUpdatedAt || order.createdAt,
+            recordedAtISO: order.deliveredAtISO,
+          });
+        });
 
       (order.previousPumpsStatus || [])
         .filter((entry) => entry.returned)
@@ -231,11 +255,22 @@ export default function PumpsManagerPage() {
     return Array.from(byCustomer.entries())
       .map(([customerId, pumpMap]) => {
         const customer = customers.find((c) => c.id === customerId);
-        const pumps = Array.from(pumpMap.values()).sort(
+        const reasonMap = reasonsByCustomer.get(customerId) || new Map();
+
+        const pumps = Array.from(pumpMap.values())
+          .map((pump) => {
+            const reasonInfo = reasonMap.get(pump.pumpNumber);
+            return {
+              ...pump,
+              latestNonReturnReason: reasonInfo?.reason,
+              latestNonReturnAt: reasonInfo?.recordedAt || reasonInfo?.recordedAtISO,
+            };
+          })
+          .sort(
           (a, b) =>
             (toMs(b.deliveredAt) || toMs(b.deliveredAtISO)) -
             (toMs(a.deliveredAt) || toMs(a.deliveredAtISO))
-        );
+          );
 
         return {
           customerId,
@@ -535,6 +570,19 @@ export default function PumpsManagerPage() {
                       <p className="text-xs text-white/70">
                         Received by: {pump.receivedByName || "Not recorded"}
                       </p>
+
+                      {pump.latestNonReturnReason && (
+                        <div className="mt-1 rounded border border-amber-400/30 bg-amber-500/10 px-2 py-1">
+                          <p className="text-[11px] text-amber-200/90">
+                            Last non-return reason: {pump.latestNonReturnReason}
+                          </p>
+                          {pump.latestNonReturnAt && (
+                            <p className="text-[10px] text-amber-200/70 mt-0.5">
+                              Recorded: {formatDateTime(pump.latestNonReturnAt)}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {isOverdue && (
                         <button
