@@ -52,6 +52,15 @@ type OutstandingPump = {
   receivedByName?: string;
 };
 
+type PumpTransfer = {
+  orderId: string;
+  pumpNumber: string;
+  deliveredAt?: any;
+  deliveredAtISO?: string;
+  driverName?: string;
+  receivedByName?: string;
+};
+
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "2-digit",
@@ -110,6 +119,7 @@ export default function PumpsManagerPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [transferDriverFilter, setTransferDriverFilter] = useState("ALL");
   const [viewFilter, setViewFilter] = useState<"ALL" | "OVERDUE_20" | "OVERDUE_30">("ALL");
   const [sendingByPumpKey, setSendingByPumpKey] = useState<Record<string, boolean>>({});
 
@@ -270,6 +280,52 @@ export default function PumpsManagerPage() {
     (entry) => entry.customerId === selectedCustomerId
   );
 
+  const transferHistoryByCustomer = useMemo(() => {
+    const byCustomer = new Map<string, PumpTransfer[]>();
+
+    orders.forEach((order) => {
+      const customerId = String(order.customerId || "").trim();
+      if (!customerId) return;
+
+      const rawStatus = String(order.status || "").trim().toUpperCase();
+      const isDelivered = rawStatus === "DELIVERED" || !!order.deliveredAt || !!order.deliveredAtISO;
+      if (!isDelivered) return;
+
+      const existing = byCustomer.get(customerId) || [];
+
+      (order.pumpNumbers || []).forEach((num) => {
+        const pumpNumber = String(num || "").trim();
+        if (!pumpNumber) return;
+
+        existing.push({
+          orderId: order.id,
+          pumpNumber,
+          deliveredAt: order.deliveredAt,
+          deliveredAtISO: order.deliveredAtISO,
+          driverName: order.driverName,
+          receivedByName: order.receivedByName,
+        });
+      });
+
+      byCustomer.set(customerId, existing);
+    });
+
+    byCustomer.forEach((list, customerId) => {
+      byCustomer.set(
+        customerId,
+        [...list]
+          .sort(
+            (a, b) =>
+              (toMs(b.deliveredAt) || toMs(b.deliveredAtISO)) -
+              (toMs(a.deliveredAt) || toMs(a.deliveredAtISO))
+          )
+          .slice(0, 80)
+      );
+    });
+
+    return byCustomer;
+  }, [orders]);
+
   useEffect(() => {
     if (!selectedCustomerId) return;
 
@@ -281,6 +337,10 @@ export default function PumpsManagerPage() {
       setSelectedCustomerId("");
     }
   }, [visibleCustomers, selectedCustomerId]);
+
+  useEffect(() => {
+    setTransferDriverFilter("ALL");
+  }, [selectedCustomerId]);
 
   async function handleSendOverdueNotice(
     customerName: string,
@@ -495,6 +555,82 @@ export default function PumpsManagerPage() {
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="border-t border-white/10 pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-cyan-200">Transfer History</h3>
+                  <p className="text-[11px] text-white/50">Latest 80 records</p>
+                </div>
+
+                {(() => {
+                  const history = transferHistoryByCustomer.get(selectedCustomer.customerId) || [];
+                  const driverOptions = Array.from(
+                    new Set(
+                      history
+                        .map((item) => String(item.driverName || "Unknown Driver").trim())
+                        .filter(Boolean)
+                    )
+                  ).sort((a, b) => a.localeCompare(b));
+
+                  return (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTransferDriverFilter("ALL")}
+                        className={`text-xs px-3 py-1 rounded border ${
+                          transferDriverFilter === "ALL"
+                            ? "bg-white/15 border-white/40"
+                            : "bg-black/30 border-white/20 hover:border-white/40"
+                        }`}
+                      >
+                        All Drivers
+                      </button>
+                      {driverOptions.map((driverName) => (
+                        <button
+                          key={driverName}
+                          type="button"
+                          onClick={() => setTransferDriverFilter(driverName)}
+                          className={`text-xs px-3 py-1 rounded border ${
+                            transferDriverFilter === driverName
+                              ? "bg-cyan-500/20 border-cyan-400/50 text-cyan-200"
+                              : "bg-black/30 border-white/20 hover:border-white/40"
+                          }`}
+                        >
+                          {driverName}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {(transferHistoryByCustomer.get(selectedCustomer.customerId) || []).filter((item) =>
+                  transferDriverFilter === "ALL"
+                    ? true
+                    : String(item.driverName || "Unknown Driver").trim() === transferDriverFilter
+                ).length === 0 && (
+                  <p className="text-xs text-white/60">No transfer history for this customer.</p>
+                )}
+
+                {(transferHistoryByCustomer.get(selectedCustomer.customerId) || [])
+                  .filter((item) =>
+                    transferDriverFilter === "ALL"
+                      ? true
+                      : String(item.driverName || "Unknown Driver").trim() === transferDriverFilter
+                  )
+                  .map((item) => (
+                  <div
+                    key={`${item.orderId}-${item.pumpNumber}-${toMs(item.deliveredAt) || toMs(item.deliveredAtISO)}`}
+                    className="rounded-lg border border-white/10 bg-black/20 p-3"
+                  >
+                    <p className="text-xs text-white/80">
+                      Pump #{item.pumpNumber} • {formatDateTime(item.deliveredAt, item.deliveredAtISO)}
+                    </p>
+                    <p className="text-xs text-white/60">Driver: {item.driverName || "Not assigned"}</p>
+                    <p className="text-xs text-white/60">Received by: {item.receivedByName || "Not recorded"}</p>
+                    <p className="text-[11px] text-white/40">Order: {item.orderId}</p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
