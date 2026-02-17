@@ -13,7 +13,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, Truck, RotateCcw, Link2, FileText, PackageOpen, AlertTriangle } from "lucide-react";
@@ -82,7 +82,9 @@ export default function DriverDashboardPage() {
       }
     }
     // Luego, buscar en Firestore (fuente de verdad)
-    const fetchPharmacy = async () => {
+    let unsubOrders: null | (() => void) = null;
+    let unsubActive: null | (() => void) = null;
+    const fetchPharmacyAndOrders = async () => {
       if (!driverId) return;
       try {
         const driverDoc = await getDoc(doc(db, "drivers", driverId));
@@ -106,21 +108,50 @@ export default function DriverDashboardPage() {
               localStorage.setItem("PHARMACY_STATE", p.state || "");
               localStorage.setItem("PHARMACY_COUNTRY", p.country || "");
             }
+            // Pedidos disponibles (PENDING, sin driver asignado)
+            unsubOrders = onSnapshot(
+              query(
+                collection(db, "orders"),
+                where("pharmacyId", "==", pharmacyDoc.id),
+                where("status", "==", "PENDING"),
+                where("driverId", "==", null)
+              ),
+              (snap) => {
+                setAvailableOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+              }
+            );
+            // Pedidos activos del conductor (ASSIGNED o IN_PROGRESS)
+            unsubActive = onSnapshot(
+              query(
+                collection(db, "orders"),
+                where("pharmacyId", "==", pharmacyDoc.id),
+                where("driverId", "==", driverId),
+                where("status", "in", ["ASSIGNED", "IN_PROGRESS"])
+              ),
+              (snap) => {
+                setActiveOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+              }
+            );
           }
         } else {
           setConnectedPharmacy(null);
+          setAvailableOrders([]);
+          setActiveOrders([]);
         }
       } catch (e) {
         setConnectedPharmacy(null);
+        setAvailableOrders([]);
+        setActiveOrders([]);
       }
     };
-    fetchPharmacy();
-    // ...otros efectos de carga de datos
-    setAvailableOrders([]);
-    setActiveOrders([]);
+    fetchPharmacyAndOrders();
     setReturnTasks([]);
     setHasPendingReturns(false);
     setPendingReturnPumpCount(0);
+    return () => {
+      if (unsubOrders) unsubOrders();
+      if (unsubActive) unsubActive();
+    };
   }, [driverId]);
 
   return (
@@ -199,7 +230,38 @@ export default function DriverDashboardPage() {
             <h2 className="text-2xl font-extrabold inline-flex items-center gap-2 mb-4">
               <PackageOpen className="text-emerald-300" size={22} /> New Orders
             </h2>
-            <p className="text-sm text-white/60">No new orders available.</p>
+            {availableOrders.length === 0 ? (
+              <p className="text-sm text-white/60">No new orders available.</p>
+            ) : (
+              <ul className="space-y-3">
+                {availableOrders.map((order: any) => (
+                  <li key={order.id} className="border border-white/10 rounded-lg p-4 space-y-2 bg-black/30">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold">Order #{order.id.slice(0, 8)}</span>
+                      <span className="text-xs px-2 py-1 rounded bg-yellow-600/80 text-white">PENDING</span>
+                    </div>
+                    <div className="text-xs text-white/70">Customer: {order.customerName || "—"}</div>
+                    <div className="text-xs text-white/60">Pumps: {order.pumpNumbers?.join(", ") || "—"}</div>
+                    <button
+                      className="mt-2 px-3 py-1 rounded bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700"
+                      onClick={async () => {
+                        try {
+                          await updateDoc(doc(db, "orders", order.id), {
+                            driverId,
+                            driverName,
+                            status: "ASSIGNED",
+                          });
+                        } catch (e) {
+                          alert("Error accepting order");
+                        }
+                      }}
+                    >
+                      Accept Order
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
         {dashboardSection === "active" && (
@@ -207,7 +269,22 @@ export default function DriverDashboardPage() {
             <h2 className="font-semibold mb-4 text-green-300 inline-flex items-center gap-2">
               <Truck size={16} /> My Active Orders
             </h2>
-            <p className="text-xs text-white/60">No active orders.</p>
+            {activeOrders.length === 0 ? (
+              <p className="text-xs text-white/60">No active orders.</p>
+            ) : (
+              <ul className="space-y-3">
+                {activeOrders.map((order: any) => (
+                  <li key={order.id} className="border border-white/10 rounded-lg p-4 space-y-2 bg-black/30">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold">Order #{order.id.slice(0, 8)}</span>
+                      <span className="text-xs px-2 py-1 rounded bg-green-600/80 text-white">{order.status}</span>
+                    </div>
+                    <div className="text-xs text-white/70">Customer: {order.customerName || "—"}</div>
+                    <div className="text-xs text-white/60">Pumps: {order.pumpNumbers?.join(", ") || "—"}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
         {dashboardSection === "returns" && (
