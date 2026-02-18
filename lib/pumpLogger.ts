@@ -1,5 +1,6 @@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { tryRunOrEnqueue } from "@/lib/offlineQueue"
 
 export async function logPumpMovement({
   pumpId,
@@ -20,7 +21,7 @@ export async function logPumpMovement({
   performedByName: string
   role: "EMPLOYEE" | "DRIVER"
 }) {
-  await addDoc(collection(db, "pump_movements"), {
+  const payload = {
     pumpId,
     pumpNumber,
     pharmacyId,
@@ -29,6 +30,23 @@ export async function logPumpMovement({
     performedById,
     performedByName,
     role,
-    timestamp: serverTimestamp(),
-  })
+    timestampMs: Date.now(),
+  };
+
+  try {
+    await addDoc(collection(db, "pump_movements"), {
+      pumpId,
+      pumpNumber,
+      pharmacyId,
+      orderId: orderId || null,
+      action,
+      performedById,
+      performedByName,
+      role,
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    // enqueue for later if cannot write now
+    await tryRunOrEnqueue("logPumpMovement", payload);
+  }
 }

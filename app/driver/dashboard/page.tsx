@@ -31,6 +31,7 @@ import {
 } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { logPumpMovement } from "@/lib/pumpLogger";
+import { initOfflineQueue, execOrEnqueue, tryRunOrEnqueue } from "@/lib/offlineQueue";
 import { sendAppEmail } from "@/lib/emailClient";
 import DeliverySignature from "@/components/DeliverySignature";
 import { uploadSignatureToStorage } from "@/lib/uploadSignature";
@@ -160,7 +161,7 @@ async function recordDriverLocationPoint({
   lng: number;
 }) {
   try {
-    await addDoc(collection(db, "driver_location_points"), {
+    await tryRunOrEnqueue("recordDriverLocationPoint", {
       driverId,
       driverName,
       pharmacyId,
@@ -310,6 +311,11 @@ export default function DriverDashboardPage() {
     if (typeof Notification !== "undefined") {
       setNotifPermission(Notification.permission);
     }
+  }, []);
+
+  useEffect(() => {
+    // initialize offline queue processing
+    initOfflineQueue();
   }, []);
 
   const [loading, setLoading] = useState(false);
@@ -499,10 +505,13 @@ export default function DriverDashboardPage() {
         return;
       }
 
-      await addDoc(collection(db, "drivers", driverId!, "pharmacies"), {
-        pharmacyId: p.id,
-        ...p.data(),
-        connectedAt: serverTimestamp(),
+      await tryRunOrEnqueue("addDriverPharmacy", {
+        driverId,
+        data: {
+          pharmacyId: p.id,
+          ...(p.data() as any),
+          connectedAtMs: Date.now(),
+        },
       });
 
       setAddPharmacyInfo("Successfully connected to pharmacy.");
@@ -527,19 +536,35 @@ export default function DriverDashboardPage() {
 
     const liveLocation = await getDriverCurrentLocation();
 
-    await updateDoc(doc(db, "orders", id), {
-      status: "ASSIGNED",
-      driverId,
-      driverName,
-      assignedAt: serverTimestamp(),
-      statusUpdatedAt: serverTimestamp(),
-      ...(liveLocation
-        ? {
-            driverLatitude: liveLocation.lat,
-            driverLongitude: liveLocation.lng,
-          }
-        : {}),
-    });
+    await execOrEnqueue(
+      "updateOrder",
+      { id, updates: {
+        status: "ASSIGNED",
+        driverId,
+        driverName,
+        assignedAtMs: Date.now(),
+        statusUpdatedAtMs: Date.now(),
+        ...(liveLocation
+          ? {
+              driverLatitude: liveLocation.lat,
+              driverLongitude: liveLocation.lng,
+            }
+          : {}),
+      } },
+      () => updateDoc(doc(db, "orders", id), {
+        status: "ASSIGNED",
+        driverId,
+        driverName,
+        assignedAt: serverTimestamp(),
+        statusUpdatedAt: serverTimestamp(),
+        ...(liveLocation
+          ? {
+              driverLatitude: liveLocation.lat,
+              driverLongitude: liveLocation.lng,
+            }
+          : {}),
+      })
+    );
     loadOrders();
 
     // Actualizar estado de bombas y registrar movimiento (PICKED_UP -> IN_TRANSIT)
@@ -582,9 +607,11 @@ export default function DriverDashboardPage() {
         if (!snap.empty) {
           const pumpDoc = snap.docs[0];
 
-          await updateDoc(doc(db, "pumps", pumpDoc.id), {
-            status: "IN_TRANSIT",
-          });
+          await execOrEnqueue(
+            "updatePump",
+            { id: pumpDoc.id, updates: { status: "IN_TRANSIT" } },
+            () => updateDoc(doc(db, "pumps", pumpDoc.id), { status: "IN_TRANSIT" })
+          );
 
           await logPumpMovement({
             pumpId: pumpDoc.id,
@@ -606,16 +633,29 @@ export default function DriverDashboardPage() {
 
     const liveLocation = await getDriverCurrentLocation();
 
-    await updateDoc(doc(db, "orders", id), {
-      status: "ON_WAY_TO_PHARMACY",
-      statusUpdatedAt: serverTimestamp(),
-      ...(liveLocation
-        ? {
-            driverLatitude: liveLocation.lat,
-            driverLongitude: liveLocation.lng,
-          }
-        : {}),
-    });
+    await execOrEnqueue(
+      "updateOrder",
+      { id, updates: {
+        status: "ON_WAY_TO_PHARMACY",
+        statusUpdatedAtMs: Date.now(),
+        ...(liveLocation
+          ? {
+              driverLatitude: liveLocation.lat,
+              driverLongitude: liveLocation.lng,
+            }
+          : {}),
+      } },
+      () => updateDoc(doc(db, "orders", id), {
+        status: "ON_WAY_TO_PHARMACY",
+        statusUpdatedAt: serverTimestamp(),
+        ...(liveLocation
+          ? {
+              driverLatitude: liveLocation.lat,
+              driverLongitude: liveLocation.lng,
+            }
+          : {}),
+      })
+    );
 
     const order = activeOrders.find((o) => o.id === id);
     if (liveLocation && order && driverId && driverName) {
@@ -644,17 +684,31 @@ export default function DriverDashboardPage() {
     const arrivedAtISO = new Date().toISOString();
 
     try {
-      await updateDoc(doc(db, "orders", order.id), {
-        arrivedAt: serverTimestamp(),
-        arrivedAtISO,
-        statusUpdatedAt: serverTimestamp(),
-        ...(liveLocation
-          ? {
-              driverLatitude: liveLocation.lat,
-              driverLongitude: liveLocation.lng,
-            }
-          : {}),
-      });
+      await execOrEnqueue(
+        "updateOrder",
+        { id: order.id, updates: {
+          arrivedAtMs: Date.now(),
+          arrivedAtISO,
+          statusUpdatedAtMs: Date.now(),
+          ...(liveLocation
+            ? {
+                driverLatitude: liveLocation.lat,
+                driverLongitude: liveLocation.lng,
+              }
+            : {}),
+        } },
+        () => updateDoc(doc(db, "orders", order.id), {
+          arrivedAt: serverTimestamp(),
+          arrivedAtISO,
+          statusUpdatedAt: serverTimestamp(),
+          ...(liveLocation
+            ? {
+                driverLatitude: liveLocation.lat,
+                driverLongitude: liveLocation.lng,
+              }
+            : {}),
+        })
+      );
 
       if (liveLocation && driverId && driverName) {
         await recordDriverLocationPoint({
@@ -805,27 +859,53 @@ export default function DriverDashboardPage() {
         ...deliveryLocationData,
       };
 
-      const [deliverySignatureRef] = await Promise.all([
-        addDoc(collection(db, "deliverySignatures"), {
-          ...baseDeliveryData,
-          signature,
-          driverSignature,
-          deliveredAt: serverTimestamp(),
-          legalPdfUrl: "",
-        }),
-        updateDoc(doc(db, "orders", order.id), {
-          ...baseDeliveryData,
-          deliveredAt: serverTimestamp(),
-          legalPdfUrl: "",
-          status: "DELIVERED",
-          statusUpdatedAt: serverTimestamp(),
-        }),
-      ]);
+      let deliverySignatureRef: any = null;
+      let skipPostProcessing = false;
 
-      completed = true;
-      loadOrders();
+      try {
+        deliverySignatureRef = await execOrEnqueue(
+          "addDeliverySignature",
+          { ...baseDeliveryData, signature, driverSignature, deliveredAt: serverTimestamp(), legalPdfUrl: "" },
+          () => addDoc(collection(db, "deliverySignatures"), {
+            ...baseDeliveryData,
+            signature,
+            driverSignature,
+            deliveredAt: serverTimestamp(),
+            legalPdfUrl: "",
+          })
+        );
 
-      void (async () => {
+        await execOrEnqueue(
+          "updateOrder",
+          { id: order.id, updates: { ...baseDeliveryData, deliveredAt: serverTimestamp(), legalPdfUrl: "", status: "DELIVERED", statusUpdatedAt: serverTimestamp() } },
+          () => updateDoc(doc(db, "orders", order.id), {
+            ...baseDeliveryData,
+            deliveredAt: serverTimestamp(),
+            legalPdfUrl: "",
+            status: "DELIVERED",
+            statusUpdatedAt: serverTimestamp(),
+          })
+        );
+
+        completed = true;
+        loadOrders();
+      } catch (err) {
+        // If we couldn't perform writes (likely offline), enqueue operations to sync later
+        try {
+          await tryRunOrEnqueue("addDeliverySignature", { ...baseDeliveryData, signature, driverSignature, deliveredAtMs: Date.now(), legalPdfUrl: "" });
+          await tryRunOrEnqueue("updateOrder", { id: order.id, updates: { ...baseDeliveryData, deliveredAtMs: Date.now(), legalPdfUrl: "", status: "DELIVERED", statusUpdatedAtMs: Date.now() } });
+        } catch (e) {
+          console.warn("Failed to enqueue delivery ops:", e);
+        }
+
+        completed = true;
+        skipPostProcessing = true;
+        loadOrders();
+        setDeliveryInfo("Delivery saved locally and will sync when online.");
+      }
+
+      if (!skipPostProcessing) {
+        (async () => {
         let legalPdfUrl = "";
 
         try {
@@ -847,10 +927,16 @@ export default function DriverDashboardPage() {
           legalPdfUrl = await getDownloadURL(pdfRef);
 
           await Promise.all([
-            updateDoc(doc(db, "orders", order.id), { legalPdfUrl }),
-            updateDoc(doc(db, "deliverySignatures", deliverySignatureRef.id), {
-              legalPdfUrl,
-            }),
+            execOrEnqueue(
+              "updateOrder",
+              { id: order.id, updates: { legalPdfUrl } },
+              () => updateDoc(doc(db, "orders", order.id), { legalPdfUrl })
+            ),
+            execOrEnqueue(
+              "updateDeliverySignature",
+              { id: deliverySignatureRef.id, updates: { legalPdfUrl } },
+              () => updateDoc(doc(db, "deliverySignatures", deliverySignatureRef.id), { legalPdfUrl })
+            ),
           ]);
         } catch (err) {
           console.error("Failed to generate or upload PDF:", err);
@@ -902,9 +988,11 @@ export default function DriverDashboardPage() {
             if (!snap.empty) {
               const pumpDoc = snap.docs[0];
 
-              await updateDoc(doc(db, "pumps", pumpDoc.id), {
-                status: "DELIVERED",
-              });
+              await execOrEnqueue(
+                "updatePump",
+                { id: pumpDoc.id, updates: { status: "DELIVERED" } },
+                () => updateDoc(doc(db, "pumps", pumpDoc.id), { status: "DELIVERED" })
+              );
 
               await logPumpMovement({
                 pumpId: pumpDoc.id,
@@ -921,6 +1009,7 @@ export default function DriverDashboardPage() {
         );
 
       })();
+      }
     } catch (err) {
       console.error("handleCompleteDelivery error:", err);
       registerTechnicalError("CONFIRM_DELIVERY", err);
@@ -1298,7 +1387,7 @@ export default function DriverDashboardPage() {
                     await ensureAnonymousAuth();
                     const liveLocation = await getDriverCurrentLocation();
 
-                    await addDoc(collection(db, "pickupSignatures"), {
+                    await tryRunOrEnqueue("addPickupSignature", {
                       orderId: selectedOrder.id,
                       pharmacyId: selectedOrder.pharmacyId,
                       signature: employeeSignature,
@@ -1306,21 +1395,34 @@ export default function DriverDashboardPage() {
                       driverName: driverName || "UNKNOWN",
                       employeeSignature,
                       driverSignature: driverPickupSignature,
-                      createdAt: serverTimestamp(),
+                      createdAtMs: Date.now(),
                     });
 
-                    await updateDoc(
-                      doc(db, "orders", selectedOrder.id),
-                      {
+                    await execOrEnqueue(
+                      "updateOrder",
+                      { id: selectedOrder.id, updates: {
                         status: "ON_WAY_TO_CUSTOMER",
-                        statusUpdatedAt: serverTimestamp(),
+                        statusUpdatedAtMs: Date.now(),
                         ...(liveLocation
                           ? {
                               driverLatitude: liveLocation.lat,
                               driverLongitude: liveLocation.lng,
                             }
                           : {}),
-                      }
+                      } },
+                      () => updateDoc(
+                        doc(db, "orders", selectedOrder.id),
+                        {
+                          status: "ON_WAY_TO_CUSTOMER",
+                          statusUpdatedAt: serverTimestamp(),
+                          ...(liveLocation
+                            ? {
+                                driverLatitude: liveLocation.lat,
+                                driverLongitude: liveLocation.lng,
+                              }
+                            : {}),
+                        }
+                      )
                     );
 
                     if (liveLocation && driverId && driverName) {
