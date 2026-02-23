@@ -923,7 +923,7 @@ export default function DriverDashboardPage() {
           });
 
           const pdfRef = storageRef(storage, `delivery_pdfs/${order.id}.pdf`);
-          await uploadBytes(pdfRef, pdfBlob);
+          await uploadBytes(pdfRef, pdfBlob, { contentType: "application/pdf" });
           legalPdfUrl = await getDownloadURL(pdfRef);
 
           await Promise.all([
