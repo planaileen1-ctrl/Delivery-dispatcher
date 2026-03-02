@@ -70,6 +70,7 @@ type ActivityOrder = {
   eKitIds?: string[];
   eKitCodes?: string[];
   driverName?: string;
+  receivedByName?: string;
   createdByEmployeeName?: string;
   createdAt?: any;
   assignedAt?: any;
@@ -77,6 +78,29 @@ type ActivityOrder = {
   arrivedAt?: any;
   deliveredAt?: any;
   statusUpdatedAt?: any;
+  signatureSimilarityAudit?: {
+    mode?: string;
+    calculatedAtISO?: string;
+    driver?: {
+      score?: number | null;
+      referenceSignatureId?: string | null;
+      comparedReferenceCount?: number;
+    };
+  };
+  pickupSignatureSimilarityAudit?: {
+    mode?: string;
+    calculatedAtISO?: string;
+    pharmacyStaff?: {
+      score?: number | null;
+      referenceSignatureId?: string | null;
+      comparedReferenceCount?: number;
+    };
+    driver?: {
+      score?: number | null;
+      referenceSignatureId?: string | null;
+      comparedReferenceCount?: number;
+    };
+  };
 };
 
 /* ---------- Helpers ---------- */
@@ -405,6 +429,11 @@ export default function EmployeeOrdersPage() {
     if (ts?.toDate) return ts.toDate().toLocaleString("en-US", DATE_TIME_FORMAT);
     if (typeof ts?.seconds === "number") return new Date(ts.seconds * 1000).toLocaleString("en-US", DATE_TIME_FORMAT);
     return "—";
+  }
+
+  function formatSimilarityPercent(score?: number | null) {
+    if (typeof score !== "number") return "—";
+    return `${Math.round(score * 100)}%`;
   }
 
   function getStatusMeta(rawStatus?: string) {
@@ -1301,11 +1330,17 @@ export default function EmployeeOrdersPage() {
                     </p>
 
                     <p className="text-xs text-white/60">
-                      Driver: {o.driverName || "Not assigned yet"}
+                      Driver: <span className="text-emerald-300">{o.driverName || "Not assigned yet"}</span>
                     </p>
 
+                    {(String(o.status || "").trim().toUpperCase() === "DELIVERED" || !!o.receivedByName) && (
+                      <p className="text-xs text-white/60">
+                        Received by: <span className="text-emerald-300">{o.receivedByName || "Not recorded"}</span>
+                      </p>
+                    )}
+
                     <p className="text-xs text-white/60">
-                      Created by: {o.createdByEmployeeName || "—"}
+                      Created by: <span className="text-emerald-300">{o.createdByEmployeeName || "—"}</span>
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-white/50">
@@ -1314,6 +1349,21 @@ export default function EmployeeOrdersPage() {
                       <p>Arrived: {formatTimestamp(o.arrivedAt)}</p>
                       <p>Delivered: {formatTimestamp(o.deliveredAt)}</p>
                     </div>
+
+                    {isPharmacyAdmin && (
+                      <div className="text-[11px] text-white/60 space-y-1 border-t border-white/10 pt-2">
+                        <p className="text-violet-300">Signature Similarity Audit (observe only)</p>
+                        <p>
+                          Pickup Pharmacy Staff: {formatSimilarityPercent(o.pickupSignatureSimilarityAudit?.pharmacyStaff?.score)}
+                        </p>
+                        <p>
+                          Pickup Driver: {formatSimilarityPercent(o.pickupSignatureSimilarityAudit?.driver?.score)}
+                        </p>
+                        <p>
+                          Delivery Driver: {formatSimilarityPercent(o.signatureSimilarityAudit?.driver?.score)}
+                        </p>
+                      </div>
+                    )}
 
                     {canManageActivityOrders && (
                       <div className="pt-2 border-t border-white/10">

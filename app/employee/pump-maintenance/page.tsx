@@ -27,6 +27,7 @@ type Pump = {
   id: string;
   pumpNumber: string;
   lastMaintenanceDate?: string | null;
+  status?: string | null;
   maintenanceDue?: boolean;
   maintenanceStatus?: {
     cleaned?: boolean;
@@ -78,20 +79,26 @@ function isMaintenanceDueByDate(lastMaintenanceDate?: string | null) {
   if (!baseDate) return false;
 
   const dueDate = new Date(baseDate);
-  dueDate.setMonth(dueDate.getMonth() + 1);
-
-  const alertStartDate = new Date(dueDate);
-  alertStartDate.setDate(alertStartDate.getDate() - 7);
+  dueDate.setFullYear(dueDate.getFullYear() + 1);
 
   const today = new Date();
   const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const alertStartDateOnly = new Date(
-    alertStartDate.getFullYear(),
-    alertStartDate.getMonth(),
-    alertStartDate.getDate()
+  const dueDateOnly = new Date(
+    dueDate.getFullYear(),
+    dueDate.getMonth(),
+    dueDate.getDate()
   );
 
-  return todayOnly.getTime() >= alertStartDateOnly.getTime();
+  return todayOnly.getTime() >= dueDateOnly.getTime();
+}
+
+function hasMaintenanceProgress(status?: {
+  cleaned?: boolean;
+  calibrated?: boolean;
+  inspected?: boolean;
+}) {
+  if (!status) return false;
+  return status.cleaned === true || status.calibrated === true || status.inspected === true;
 }
 
 function getTodayUsDate() {
@@ -184,9 +191,11 @@ export default function PumpMaintenancePage() {
 
   useEffect(() => {
     const filtered = allPumps.filter((p: any) => {
-      const dueByFlag = p.maintenanceDue === true;
+      const rawStatus = String(p.status || "").trim().toUpperCase();
+      const inMaintenanceWithProgress =
+        rawStatus === "IN_MAINTENANCE" && hasMaintenanceProgress(p.maintenanceStatus);
       const dueByDate = isMaintenanceDueByDate(String(p.lastMaintenanceDate || ""));
-      if (!dueByFlag && !dueByDate) return false;
+      if (!inMaintenanceWithProgress && !dueByDate) return false;
 
       const pumpNumber = String(p.pumpNumber || "").trim();
       if (!pumpNumber) return true;

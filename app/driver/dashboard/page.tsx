@@ -144,6 +144,442 @@ function formatDateTime(value: string | number | Date) {
   return new Date(value).toLocaleString("en-US", DATE_TIME_FORMAT);
 }
 
+type SignatureSimilarity = {
+  score: number | null;
+  referenceSignatureId: string | null;
+  comparedReferenceCount: number;
+};
+
+type SignatureMetrics = {
+  strokeCount: number;
+  pointCount: number;
+  pathLength: number;
+};
+
+function toMillis(ts: any) {
+  if (!ts) return 0;
+  if (typeof ts === "string") return new Date(ts).getTime();
+  if (typeof ts?.seconds === "number") return ts.seconds * 1000;
+  if (typeof ts?.toDate === "function") return ts.toDate().getTime();
+  return 0;
+}
+
+async function getPickupEmployeeSignature(orderId: string): Promise<string> {
+  try {
+    const pickupQ = query(
+      collection(db, "pickupSignatures"),
+      where("orderId", "==", orderId)
+    );
+
+    const pickupSnap = await getDocs(pickupQ);
+    if (pickupSnap.empty) return "";
+
+    const latestPickup = pickupSnap.docs
+      .map((docSnap) => docSnap.data() as any)
+      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))[0];
+
+    const signatureValue = String(
+      latestPickup?.employeeSignature || latestPickup?.signature || ""
+    ).trim();
+
+    return signatureValue;
+  } catch (error) {
+    console.warn("Failed to load pickup employee signature:", error);
+    return "";
+  }
+}
+
+async function signatureToInkVector(dataUrl: string, width = 160, height = 60) {
+  if (typeof document === "undefined") return null;
+
+  return new Promise<Uint8Array | null>((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const sourceCanvas = document.createElement("canvas");
+        sourceCanvas.width = image.width;
+        sourceCanvas.height = image.height;
+        const sourceCtx = sourceCanvas.getContext("2d");
+        if (!sourceCtx) {
+          resolve(null);
+          return;
+        }
+
+        sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+        sourceCtx.drawImage(image, 0, 0, sourceCanvas.width, sourceCanvas.height);
+
+        const sourcePixels = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height).data;
+
+        let minX = sourceCanvas.width;
+        let minY = sourceCanvas.height;
+        let maxX = -1;
+        let maxY = -1;
+
+        for (let y = 0; y < sourceCanvas.height; y++) {
+          for (let x = 0; x < sourceCanvas.width; x++) {
+            const offset = (y * sourceCanvas.width + x) * 4;
+            const alpha = sourcePixels[offset + 3];
+            if (alpha > 20) {
+              if (x < minX) minX = x;
+              if (y < minY) minY = y;
+              if (x > maxX) maxX = x;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX < 0 || maxY < 0) {
+          resolve(null);
+          return;
+        }
+
+        const bboxWidth = Math.max(1, maxX - minX + 1);
+        const bboxHeight = Math.max(1, maxY - minY + 1);
+
+        const normalizedCanvas = document.createElement("canvas");
+        normalizedCanvas.width = width;
+        normalizedCanvas.height = height;
+        const normalizedCtx = normalizedCanvas.getContext("2d");
+        if (!normalizedCtx) {
+          resolve(null);
+          return;
+        }
+
+        normalizedCtx.clearRect(0, 0, width, height);
+
+        const padding = 4;
+        const targetWidth = Math.max(1, width - padding * 2);
+        const targetHeight = Math.max(1, height - padding * 2);
+
+        normalizedCtx.drawImage(
+          sourceCanvas,
+          minX,
+          minY,
+          bboxWidth,
+          bboxHeight,
+          padding,
+          padding,
+          targetWidth,
+          targetHeight
+        );
+
+        const pixels = normalizedCtx.getImageData(0, 0, width, height).data;
+        const ink = new Uint8Array(width * height);
+
+        for (let i = 0; i < width * height; i++) {
+          const offset = i * 4;
+          const alpha = pixels[offset + 3];
+          ink[i] = alpha > 20 ? 1 : 0;
+        }
+
+        resolve(ink);
+      } catch {
+        resolve(null);
+      }
+    };
+
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
+}
+
+function compareInkVectors(a: Uint8Array, b: Uint8Array) {
+  if (a.length !== b.length || a.length === 0) return null;
+
+  let intersection = 0;
+  let inkA = 0;
+  let inkB = 0;
+  let equalPixels = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    const av = a[i] === 1;
+    const bv = b[i] === 1;
+
+    if (av) inkA += 1;
+    if (bv) inkB += 1;
+    if (av && bv) intersection += 1;
+    if (av === bv) equalPixels += 1;
+  }
+
+  if (inkA === 0 || inkB === 0) return 0;
+
+  const dice = (2 * intersection) / (inkA + inkB);
+  const pixelAgreement = equalPixels / a.length;
+
+  const densityA = inkA / a.length;
+  const densityB = inkB / b.length;
+  const densityPenalty = Math.max(0, 1 - Math.abs(densityA - densityB) * 3);
+
+  const score = Math.max(0, Math.min(1, dice * 0.75 + pixelAgreement * 0.15 + densityPenalty * 0.1));
+
+  return Number(score.toFixed(4));
+}
+
+function formatSimilarityPercent(score: number | null | undefined) {
+  if (typeof score !== "number") return "—";
+  return `${Math.round(score * 100)}%`;
+}
+
+async function compareSignatures(inputSignature: string, referenceSignature: string) {
+  const [inputVector, referenceVector] = await Promise.all([
+    signatureToInkVector(inputSignature),
+    signatureToInkVector(referenceSignature),
+  ]);
+
+  if (!inputVector || !referenceVector) return null;
+  return compareInkVectors(inputVector, referenceVector);
+}
+
+async function validateCustomerSignatureQuality(dataUrl: string): Promise<{
+  valid: boolean;
+  reason?: string;
+}>
+{
+  if (typeof document === "undefined") {
+    return { valid: true };
+  }
+
+  const image = await new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+
+  if (!image) {
+    return {
+      valid: false,
+      reason: "Customer signature is invalid. Please sign again with full name or proper rubric.",
+    };
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width || 400;
+  canvas.height = image.height || 200;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return { valid: true };
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const isInk = (x: number, y: number) => {
+    const idx = (y * canvas.width + x) * 4;
+    return pixels[idx + 3] > 20;
+  };
+
+  let minX = canvas.width;
+  let minY = canvas.height;
+  let maxX = -1;
+  let maxY = -1;
+  let inkPixels = 0;
+
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      if (!isInk(x, y)) continue;
+      inkPixels += 1;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (inkPixels < 180 || maxX < 0 || maxY < 0) {
+    return {
+      valid: false,
+      reason: "Simple signatures are not allowed. Please use a real signature or full-name rubric.",
+    };
+  }
+
+  const bboxWidth = maxX - minX + 1;
+  const bboxHeight = maxY - minY + 1;
+  const bboxArea = bboxWidth * bboxHeight;
+  const inkCoverage = bboxArea > 0 ? inkPixels / bboxArea : 0;
+
+  if (bboxWidth < 48 || bboxHeight < 22) {
+    return {
+      valid: false,
+      reason: "Signature must cover more area. Single-line marks are not allowed.",
+    };
+  }
+
+  const occupiedRows = new Set<number>();
+  const occupiedCols = new Set<number>();
+  let transitions = 0;
+  let horizontalChanges = 0;
+  let verticalChanges = 0;
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const current = isInk(x, y);
+      if (!current) continue;
+
+      occupiedRows.add(y);
+      occupiedCols.add(x);
+
+      if (x < maxX && current !== isInk(x + 1, y)) {
+        transitions += 1;
+        horizontalChanges += 1;
+      }
+      if (y < maxY && current !== isInk(x, y + 1)) {
+        transitions += 1;
+        verticalChanges += 1;
+      }
+    }
+  }
+
+  if (occupiedRows.size < 16 || occupiedCols.size < 28) {
+    return {
+      valid: false,
+      reason: "Signature looks too short. Please sign clearly with a full rubric.",
+    };
+  }
+
+  if (inkCoverage < 0.045) {
+    return {
+      valid: false,
+      reason: "Simple signatures are not allowed (line/X/S-like marks). Please sign fully.",
+    };
+  }
+
+  if (horizontalChanges < 80 || verticalChanges < 80) {
+    return {
+      valid: false,
+      reason: "Signature is too basic. Please provide a complete handwritten signature.",
+    };
+  }
+
+  if (transitions < 220) {
+    return {
+      valid: false,
+      reason: "Simple signatures are not allowed (line/X/S-like marks). Please sign with full name or rubric.",
+    };
+  }
+
+  return { valid: true };
+}
+
+function validateCustomerSignatureMetrics(metrics: SignatureMetrics | null): {
+  valid: boolean;
+  reason?: string;
+} {
+  if (!metrics) {
+    return {
+      valid: false,
+      reason: "Customer signature is missing. Please sign with a full handwritten signature.",
+    };
+  }
+
+  if (metrics.strokeCount < 3) {
+    return {
+      valid: false,
+      reason: "Simple signatures are not allowed. Please write a full signature (more than 3 letters).",
+    };
+  }
+
+  if (metrics.pointCount < 90 || metrics.pathLength < 260) {
+    return {
+      valid: false,
+      reason: "Signature is too short. Please sign with a full handwritten signature (more than 3 letters).",
+    };
+  }
+
+  return { valid: true };
+}
+
+async function computeDriverSignatureSimilarity(
+  driverId: string | null,
+  inputSignature: string
+): Promise<SignatureSimilarity> {
+  if (!driverId) {
+    return {
+      score: null,
+      referenceSignatureId: null,
+      comparedReferenceCount: 0,
+    };
+  }
+
+  const driverSignaturesQ = query(
+    collection(db, "signatures"),
+    where("driverId", "==", driverId)
+  );
+  const driverSignaturesSnap = await getDocs(driverSignaturesQ);
+
+  const references = driverSignaturesSnap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as any) }))
+    .filter((doc) => typeof doc.signatureBase64 === "string" && doc.signatureBase64.length > 0)
+    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+  if (references.length === 0) {
+    return {
+      score: null,
+      referenceSignatureId: null,
+      comparedReferenceCount: 0,
+    };
+  }
+
+  const latest = references[0];
+  const score = await compareSignatures(inputSignature, latest.signatureBase64);
+
+  return {
+    score,
+    referenceSignatureId: latest.id,
+    comparedReferenceCount: references.length,
+  };
+}
+
+async function computePharmacyStaffSignatureSimilarity(
+  pharmacyId: string | null | undefined,
+  inputSignature: string
+): Promise<SignatureSimilarity> {
+  if (!pharmacyId) {
+    return {
+      score: null,
+      referenceSignatureId: null,
+      comparedReferenceCount: 0,
+    };
+  }
+
+  const employeeSignaturesQ = query(
+    collection(db, "signatures"),
+    where("pharmacyId", "==", pharmacyId)
+  );
+  const employeeSignaturesSnap = await getDocs(employeeSignaturesQ);
+
+  const references = employeeSignaturesSnap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as any) }))
+    .filter((doc) => typeof doc.signatureBase64 === "string" && doc.signatureBase64.length > 0);
+
+  if (references.length === 0) {
+    return {
+      score: null,
+      referenceSignatureId: null,
+      comparedReferenceCount: 0,
+    };
+  }
+
+  let bestScore: number | null = null;
+  let bestId: string | null = null;
+
+  for (const reference of references) {
+    const score = await compareSignatures(inputSignature, reference.signatureBase64);
+    if (score === null) continue;
+
+    if (bestScore === null || score > bestScore) {
+      bestScore = score;
+      bestId = reference.id;
+    }
+  }
+
+  return {
+    score: bestScore,
+    referenceSignatureId: bestId,
+    comparedReferenceCount: references.length,
+  };
+}
+
 async function recordDriverLocationPoint({
   driverId,
   driverName,
@@ -296,8 +732,38 @@ export default function DriverDashboardPage() {
 
   const [driverSignature, setDriverSignature] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
+  const [customerSignatureMetrics, setCustomerSignatureMetrics] = useState<SignatureMetrics | null>(null);
   const [employeeSignature, setEmployeeSignature] = useState("");
   const [driverPickupSignature, setDriverPickupSignature] = useState("");
+  const [pickupSimilarityPreview, setPickupSimilarityPreview] = useState<{
+    loading: boolean;
+    pharmacyStaffScore: number | null;
+    driverScore: number | null;
+    error: string;
+  }>({
+    loading: false,
+    pharmacyStaffScore: null,
+    driverScore: null,
+    error: "",
+  });
+  const [deliverySimilarityPreview, setDeliverySimilarityPreview] = useState<{
+    loading: boolean;
+    driverScore: number | null;
+    error: string;
+  }>({
+    loading: false,
+    driverScore: null,
+    error: "",
+  });
+  const [customerSignatureQuality, setCustomerSignatureQuality] = useState<{
+    checking: boolean;
+    valid: boolean | null;
+    reason: string;
+  }>({
+    checking: false,
+    valid: null,
+    reason: "",
+  });
   const [receiverName, setReceiverName] = useState("");
   const [previousPumpsStatus, setPreviousPumpsStatus] = useState<
     Record<string, { returned: boolean; reason: string }>
@@ -361,6 +827,164 @@ export default function DriverDashboardPage() {
 
     setPreviousPumpsStatus(initial);
   }, [showDeliveryModal, selectedOrder]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const runPickupSimilarityPreview = async () => {
+      if (!showPickupModal || !selectedOrder) {
+        setPickupSimilarityPreview({
+          loading: false,
+          pharmacyStaffScore: null,
+          driverScore: null,
+          error: "",
+        });
+        return;
+      }
+
+      if (!employeeSignature || !driverPickupSignature) {
+        setPickupSimilarityPreview({
+          loading: false,
+          pharmacyStaffScore: null,
+          driverScore: null,
+          error: "",
+        });
+        return;
+      }
+
+      setPickupSimilarityPreview((prev) => ({ ...prev, loading: true, error: "" }));
+
+      try {
+        const [pharmacyStaffSimilarity, pickupDriverSimilarity] = await Promise.all([
+          computePharmacyStaffSignatureSimilarity(selectedOrder.pharmacyId, employeeSignature),
+          computeDriverSignatureSimilarity(driverId, driverPickupSignature),
+        ]);
+
+        if (cancelled) return;
+
+        setPickupSimilarityPreview({
+          loading: false,
+          pharmacyStaffScore: pharmacyStaffSimilarity.score,
+          driverScore: pickupDriverSimilarity.score,
+          error: "",
+        });
+      } catch (err) {
+        if (cancelled) return;
+        const message = (err as any)?.message ? String((err as any).message) : "Could not calculate similarity";
+        setPickupSimilarityPreview({
+          loading: false,
+          pharmacyStaffScore: null,
+          driverScore: null,
+          error: message,
+        });
+      }
+    };
+
+    const timeout = setTimeout(runPickupSimilarityPreview, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [showPickupModal, selectedOrder, employeeSignature, driverPickupSignature, driverId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const runDeliverySimilarityPreview = async () => {
+      if (!showDeliveryModal || !selectedOrder) {
+        setDeliverySimilarityPreview({ loading: false, driverScore: null, error: "" });
+        return;
+      }
+
+      if (!driverSignature) {
+        setDeliverySimilarityPreview({ loading: false, driverScore: null, error: "" });
+        return;
+      }
+
+      setDeliverySimilarityPreview((prev) => ({ ...prev, loading: true, error: "" }));
+
+      try {
+        const result = await computeDriverSignatureSimilarity(driverId, driverSignature);
+        if (cancelled) return;
+
+        setDeliverySimilarityPreview({
+          loading: false,
+          driverScore: result.score,
+          error: "",
+        });
+      } catch (err) {
+        if (cancelled) return;
+        const message = (err as any)?.message ? String((err as any).message) : "Could not calculate similarity";
+        setDeliverySimilarityPreview({
+          loading: false,
+          driverScore: null,
+          error: message,
+        });
+      }
+    };
+
+    const timeout = setTimeout(runDeliverySimilarityPreview, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [showDeliveryModal, selectedOrder, driverSignature, driverId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const runCustomerSignatureValidation = async () => {
+      if (!showDeliveryModal) {
+        setCustomerSignatureQuality({ checking: false, valid: null, reason: "" });
+        return;
+      }
+
+      if (!signature) {
+        setCustomerSignatureQuality({ checking: false, valid: null, reason: "" });
+        return;
+      }
+
+      setCustomerSignatureQuality((prev) => ({ ...prev, checking: true }));
+
+      try {
+        const metricsValidation = validateCustomerSignatureMetrics(customerSignatureMetrics);
+        if (!metricsValidation.valid) {
+          if (cancelled) return;
+          setCustomerSignatureQuality({
+            checking: false,
+            valid: false,
+            reason: metricsValidation.reason || "Customer signature is too simple.",
+          });
+          return;
+        }
+
+        const result = await validateCustomerSignatureQuality(signature);
+        if (cancelled) return;
+
+        setCustomerSignatureQuality({
+          checking: false,
+          valid: result.valid,
+          reason: result.valid ? "" : (result.reason || "Customer signature is too simple."),
+        });
+      } catch {
+        if (cancelled) return;
+        setCustomerSignatureQuality({
+          checking: false,
+          valid: false,
+          reason: "Customer signature validation failed. Please sign again.",
+        });
+      }
+    };
+
+    const timeout = setTimeout(runCustomerSignatureValidation, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [showDeliveryModal, signature, customerSignatureMetrics]);
 
   async function loadConnectedPharmacies() {
     await ensureAnonymousAuth();
@@ -753,6 +1377,24 @@ export default function DriverDashboardPage() {
       return;
     }
 
+    const customerSignatureQuality = await validateCustomerSignatureQuality(signature);
+    if (!customerSignatureQuality.valid) {
+      setDeliveryError(
+        customerSignatureQuality.reason ||
+          "Customer signature is not valid. Please sign again."
+      );
+      return;
+    }
+
+    const customerMetricsQuality = validateCustomerSignatureMetrics(customerSignatureMetrics);
+    if (!customerMetricsQuality.valid) {
+      setDeliveryError(
+        customerMetricsQuality.reason ||
+          "Customer signature is not valid. Please sign again."
+      );
+      return;
+    }
+
     const previousPumpsList = selectedOrder.customerPreviousPumps || [];
     const previousPumpsStatusList = previousPumpsList.map((num) => {
       const key = String(num);
@@ -793,6 +1435,13 @@ export default function DriverDashboardPage() {
     let completed = false;
 
     try {
+      const deliveryDriverSimilarity = await computeDriverSignatureSimilarity(driverId, driverSignature);
+      const signatureSimilarityAudit = {
+        mode: "observe_only",
+        calculatedAtISO: new Date().toISOString(),
+        driver: deliveryDriverSimilarity,
+      };
+
       const locationPromise = getDriverCurrentLocation({
         timeoutMs: 1500,
         maximumAge: 30000,
@@ -866,11 +1515,19 @@ export default function DriverDashboardPage() {
       try {
         deliverySignatureRef = await execOrEnqueue(
           "addDeliverySignature",
-          { ...baseDeliveryData, signature, driverSignature, deliveredAt: serverTimestamp(), legalPdfUrl: "" },
+          {
+            ...baseDeliveryData,
+            signature,
+            driverSignature,
+            signatureSimilarityAudit,
+            deliveredAt: serverTimestamp(),
+            legalPdfUrl: "",
+          },
           () => addDoc(collection(db, "deliverySignatures"), {
             ...baseDeliveryData,
             signature,
             driverSignature,
+            signatureSimilarityAudit,
             deliveredAt: serverTimestamp(),
             legalPdfUrl: "",
           })
@@ -878,9 +1535,20 @@ export default function DriverDashboardPage() {
 
         await execOrEnqueue(
           "updateOrder",
-          { id: order.id, updates: { ...baseDeliveryData, deliveredAt: serverTimestamp(), legalPdfUrl: "", status: "DELIVERED", statusUpdatedAt: serverTimestamp() } },
+          {
+            id: order.id,
+            updates: {
+              ...baseDeliveryData,
+              signatureSimilarityAudit,
+              deliveredAt: serverTimestamp(),
+              legalPdfUrl: "",
+              status: "DELIVERED",
+              statusUpdatedAt: serverTimestamp(),
+            },
+          },
           () => updateDoc(doc(db, "orders", order.id), {
             ...baseDeliveryData,
+            signatureSimilarityAudit,
             deliveredAt: serverTimestamp(),
             legalPdfUrl: "",
             status: "DELIVERED",
@@ -893,8 +1561,25 @@ export default function DriverDashboardPage() {
       } catch (err) {
         // If we couldn't perform writes (likely offline), enqueue operations to sync later
         try {
-          await tryRunOrEnqueue("addDeliverySignature", { ...baseDeliveryData, signature, driverSignature, deliveredAtMs: Date.now(), legalPdfUrl: "" });
-          await tryRunOrEnqueue("updateOrder", { id: order.id, updates: { ...baseDeliveryData, deliveredAtMs: Date.now(), legalPdfUrl: "", status: "DELIVERED", statusUpdatedAtMs: Date.now() } });
+          await tryRunOrEnqueue("addDeliverySignature", {
+            ...baseDeliveryData,
+            signature,
+            driverSignature,
+            signatureSimilarityAudit,
+            deliveredAtMs: Date.now(),
+            legalPdfUrl: "",
+          });
+          await tryRunOrEnqueue("updateOrder", {
+            id: order.id,
+            updates: {
+              ...baseDeliveryData,
+              signatureSimilarityAudit,
+              deliveredAtMs: Date.now(),
+              legalPdfUrl: "",
+              status: "DELIVERED",
+              statusUpdatedAtMs: Date.now(),
+            },
+          });
         } catch (e) {
           console.warn("Failed to enqueue delivery ops:", e);
         }
@@ -910,17 +1595,21 @@ export default function DriverDashboardPage() {
         let legalPdfUrl = "";
 
         try {
+          const employeeSignatureSource = await getPickupEmployeeSignature(order.id);
+
           const pdfBlob = await generateDeliveryPDF({
             orderId: order.id,
             customerName: order.customerName,
             driverName: driverName || "",
             pumpNumbers: order.pumpNumbers,
+            eKitCodes: order.eKitCodes || [],
             deliveredAt: deliveredAtISO,
             ip,
             lat: location?.lat ?? 0,
             lng: location?.lng ?? 0,
             signatureUrl,
             driverSignatureUrl,
+            employeeSignatureUrl: employeeSignatureSource || undefined,
           });
 
           const pdfRef = storageRef(storage, `delivery_pdfs/${order.id}.pdf`);
@@ -1027,6 +1716,7 @@ export default function DriverDashboardPage() {
       setSelectedOrder(null);
       setDeliveryContextTimeISO("");
       setSignature(null);
+      setCustomerSignatureMetrics(null);
       setDriverSignature("");
       setReceiverName("");
       setPreviousPumpsStatus({});
@@ -1203,6 +1893,14 @@ export default function DriverDashboardPage() {
                       🏠 {o.customerAddress}
                     </p>
                   )}
+
+                  <p className="text-xs text-white/70">
+                    Pumps to carry: {o.pumpNumbers && o.pumpNumbers.length > 0 ? o.pumpNumbers.join(", ") : "—"}
+                  </p>
+
+                  <p className="text-xs text-violet-300">
+                    E-KITs to carry: {o.eKitCodes && o.eKitCodes.length > 0 ? o.eKitCodes.join(", ") : "—"}
+                  </p>
 
                   <button
                     onClick={() => handleAcceptOrder(o.id)}
@@ -1383,6 +2081,25 @@ export default function DriverDashboardPage() {
                 onChange={setDriverPickupSignature}
               />
 
+              <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs space-y-1">
+                <p className="text-violet-300 font-semibold">Signature Similarity Preview (observe only)</p>
+                {pickupSimilarityPreview.loading ? (
+                  <p className="text-white/60">Calculating...</p>
+                ) : (
+                  <>
+                    <p className="text-white/70">
+                      Pharmacy Staff: {formatSimilarityPercent(pickupSimilarityPreview.pharmacyStaffScore)}
+                    </p>
+                    <p className="text-white/70">
+                      Driver: {formatSimilarityPercent(pickupSimilarityPreview.driverScore)}
+                    </p>
+                  </>
+                )}
+                {pickupSimilarityPreview.error && (
+                  <p className="text-red-300">{pickupSimilarityPreview.error}</p>
+                )}
+              </div>
+
               <button
                 disabled={!employeeSignature || !driverPickupSignature}
                 onClick={async () => {
@@ -1395,6 +2112,18 @@ export default function DriverDashboardPage() {
                     await ensureAnonymousAuth();
                     const liveLocation = await getDriverCurrentLocation();
 
+                    const [pharmacyStaffSimilarity, pickupDriverSimilarity] = await Promise.all([
+                      computePharmacyStaffSignatureSimilarity(selectedOrder.pharmacyId, employeeSignature),
+                      computeDriverSignatureSimilarity(driverId, driverPickupSignature),
+                    ]);
+
+                    const signatureSimilarityAudit = {
+                      mode: "observe_only",
+                      calculatedAtISO: new Date().toISOString(),
+                      pharmacyStaff: pharmacyStaffSimilarity,
+                      driver: pickupDriverSimilarity,
+                    };
+
                     await tryRunOrEnqueue("addPickupSignature", {
                       orderId: selectedOrder.id,
                       pharmacyId: selectedOrder.pharmacyId,
@@ -1403,24 +2132,30 @@ export default function DriverDashboardPage() {
                       driverName: driverName || "UNKNOWN",
                       employeeSignature,
                       driverSignature: driverPickupSignature,
+                      signatureSimilarityAudit,
                       createdAtMs: Date.now(),
                     });
 
                     await execOrEnqueue(
                       "updateOrder",
-                      { id: selectedOrder.id, updates: {
-                        status: "ON_WAY_TO_CUSTOMER",
-                        statusUpdatedAtMs: Date.now(),
-                        ...(liveLocation
-                          ? {
-                              driverLatitude: liveLocation.lat,
-                              driverLongitude: liveLocation.lng,
-                            }
-                          : {}),
-                      } },
+                      {
+                        id: selectedOrder.id,
+                        updates: {
+                          pickupSignatureSimilarityAudit: signatureSimilarityAudit,
+                          status: "ON_WAY_TO_CUSTOMER",
+                          statusUpdatedAtMs: Date.now(),
+                          ...(liveLocation
+                            ? {
+                                driverLatitude: liveLocation.lat,
+                                driverLongitude: liveLocation.lng,
+                              }
+                            : {}),
+                        },
+                      },
                       () => updateDoc(
                         doc(db, "orders", selectedOrder.id),
                         {
+                          pickupSignatureSimilarityAudit: signatureSimilarityAudit,
                           status: "ON_WAY_TO_CUSTOMER",
                           statusUpdatedAt: serverTimestamp(),
                           ...(liveLocation
@@ -1497,6 +2232,7 @@ export default function DriverDashboardPage() {
               <DeliverySignature
                 title="Customer Signature"
                 mode="auto"
+                onMetrics={setCustomerSignatureMetrics}
                 onSave={(dataUrl) => {
                   setSignature(dataUrl);
                 }}
@@ -1506,6 +2242,20 @@ export default function DriverDashboardPage() {
                 mode="auto"
                 onSave={(dataUrl) => setDriverSignature(dataUrl)}
               />
+
+              <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs space-y-1">
+                <p className="text-violet-300 font-semibold">Signature Similarity Preview (observe only)</p>
+                {deliverySimilarityPreview.loading ? (
+                  <p className="text-white/60">Calculating...</p>
+                ) : (
+                  <p className="text-white/70">
+                    Driver: {formatSimilarityPercent(deliverySimilarityPreview.driverScore)}
+                  </p>
+                )}
+                {deliverySimilarityPreview.error && (
+                  <p className="text-red-300">{deliverySimilarityPreview.error}</p>
+                )}
+              </div>
 
               {selectedOrder.customerPreviousPumps &&
                 selectedOrder.customerPreviousPumps.length > 0 && (
@@ -1576,9 +2326,23 @@ export default function DriverDashboardPage() {
                 <p className="text-red-400 text-sm">{deliveryError}</p>
               )}
 
+              {customerSignatureQuality.checking && (
+                <p className="text-yellow-300 text-sm">Validating customer signature quality...</p>
+              )}
+
+              {customerSignatureQuality.valid === false && customerSignatureQuality.reason && (
+                <p className="text-red-400 text-sm">{customerSignatureQuality.reason}</p>
+              )}
+
               <button
                 onClick={handleCompleteDelivery}
-                disabled={deliveryLoading || !signature || !driverSignature}
+                disabled={
+                  deliveryLoading ||
+                  !signature ||
+                  !driverSignature ||
+                  customerSignatureQuality.checking ||
+                  customerSignatureQuality.valid === false
+                }
                 className="w-full bg-green-600 py-2 rounded disabled:opacity-50"
               >
                 {deliveryLoading ? "SAVING..." : "CONFIRM DELIVERY"}

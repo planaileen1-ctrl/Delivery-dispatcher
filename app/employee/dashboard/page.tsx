@@ -33,6 +33,67 @@ const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   hour12: true,
 };
 
+function parseUsOrIsoDate(value?: string | null) {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  const usMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (usMatch) {
+    const month = Number(usMatch[1]);
+    const day = Number(usMatch[2]);
+    const year = Number(usMatch[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() === month - 1 &&
+      parsed.getDate() === day
+    ) {
+      return parsed;
+    }
+    return null;
+  }
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() === month - 1 &&
+      parsed.getDate() === day
+    ) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function isMaintenanceDueByDate(lastMaintenanceDate?: string | null) {
+  const baseDate = parseUsOrIsoDate(lastMaintenanceDate);
+  if (!baseDate) return false;
+
+  const dueDate = new Date(baseDate);
+  dueDate.setFullYear(dueDate.getFullYear() + 1);
+
+  const today = new Date();
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dueDateOnly = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+
+  return todayOnly.getTime() >= dueDateOnly.getTime();
+}
+
+function hasMaintenanceProgress(status?: {
+  cleaned?: boolean;
+  calibrated?: boolean;
+  inspected?: boolean;
+}) {
+  if (!status) return false;
+  return status.cleaned === true || status.calibrated === true || status.inspected === true;
+}
+
 export default function EmployeeDashboardPage() {
   const router = useRouter();
   const [employeeName, setEmployeeName] = useState("");
@@ -222,11 +283,16 @@ export default function EmployeeDashboardPage() {
         const maintenanceCount = pumpsSnap.docs.reduce((count, d) => {
           const pump = d.data() as any;
           const isActive = pump.active !== false;
-          const needsMaintenance = pump.maintenanceDue === true;
+          const rawStatus = String(pump.status || "").trim().toUpperCase();
+          const inMaintenanceWithProgress =
+            rawStatus === "IN_MAINTENANCE" && hasMaintenanceProgress(pump.maintenanceStatus);
+          const dueByDate = isMaintenanceDueByDate(String(pump.lastMaintenanceDate || ""));
           const pumpNumber = String(pump.pumpNumber || "").trim();
           const isPendingReturnTransit = pumpNumber
             ? pendingReturnPumpNumbers.has(pumpNumber)
             : false;
+
+          const needsMaintenance = inMaintenanceWithProgress || dueByDate;
           return isActive && needsMaintenance && !isPendingReturnTransit ? count + 1 : count;
         }, 0);
 

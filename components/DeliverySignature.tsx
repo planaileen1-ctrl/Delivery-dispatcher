@@ -6,14 +6,24 @@ type Props = {
   title: string;
   onSave: (dataUrl: string) => void;
   mode?: "manual" | "auto";
+  onMetrics?: (metrics: {
+    strokeCount: number;
+    pointCount: number;
+    pathLength: number;
+  }) => void;
 };
 
 export default function DeliverySignature({
   title,
   onSave,
   mode = "manual",
+  onMetrics,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const strokeCountRef = useRef(0);
+  const pointCountRef = useRef(0);
+  const pathLengthRef = useRef(0);
   const [drawing, setDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
@@ -37,11 +47,16 @@ export default function DeliverySignature({
   function start(e: any) {
     if (e?.cancelable) e.preventDefault();
     setDrawing(true);
+    strokeCountRef.current += 1;
+    const pos = getPosition(e);
+    lastPointRef.current = pos;
+    pointCountRef.current += 1;
     draw(e);
   }
 
   function end() {
     setDrawing(false);
+    lastPointRef.current = null;
     canvasRef.current?.getContext("2d")?.beginPath();
 
     if (mode === "auto") {
@@ -56,6 +71,16 @@ export default function DeliverySignature({
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d")!;
     const pos = getPosition(e);
+
+    if (lastPointRef.current) {
+      const dx = pos.x - lastPointRef.current.x;
+      const dy = pos.y - lastPointRef.current.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      pathLengthRef.current += distance;
+    }
+
+    lastPointRef.current = pos;
+    pointCountRef.current += 1;
 
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
@@ -73,7 +98,16 @@ export default function DeliverySignature({
     const ctx = canvasRef.current?.getContext("2d");
     ctx?.clearRect(0, 0, 400, 200);
     ctx?.beginPath();
+    strokeCountRef.current = 0;
+    pointCountRef.current = 0;
+    pathLengthRef.current = 0;
+    lastPointRef.current = null;
     setHasDrawn(false);
+    onMetrics?.({
+      strokeCount: 0,
+      pointCount: 0,
+      pathLength: 0,
+    });
     onSave("");
   }
 
@@ -93,6 +127,11 @@ export default function DeliverySignature({
       return;
     }
 
+    onMetrics?.({
+      strokeCount: strokeCountRef.current,
+      pointCount: pointCountRef.current,
+      pathLength: pathLengthRef.current,
+    });
     onSave(dataUrl);
   }
 
@@ -102,6 +141,11 @@ export default function DeliverySignature({
     const dataUrl = canvasRef.current.toDataURL("image/png");
     if (dataUrl.length < 2000) return;
 
+    onMetrics?.({
+      strokeCount: strokeCountRef.current,
+      pointCount: pointCountRef.current,
+      pathLength: pathLengthRef.current,
+    });
     onSave(dataUrl);
   }
 

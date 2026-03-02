@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { sendAppEmail } from "@/lib/emailClient";
+import { buildDeliveryReportEmailHtml } from "@/lib/deliveryReportTemplate";
 
 const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   year: "numeric",
@@ -20,6 +21,8 @@ type DeliveryBackup = {
   id: string;
   customerName?: string;
   driverName?: string;
+  pumpNumbers?: string[];
+  eKitCodes?: string[];
   deliveredAt?: any;
   deliveredAtISO?: string;
   statusUpdatedAt?: any;
@@ -27,6 +30,11 @@ type DeliveryBackup = {
   legalPdfUrl?: string;
   status?: string;
   driverId?: string;
+  deliveredFromIP?: string;
+  deliveredLatitude?: number;
+  deliveredLongitude?: number;
+  signatureUrl?: string;
+  driverSignatureUrl?: string;
 };
 
 function formatDate(ts: any) {
@@ -115,11 +123,21 @@ export default function DriverDeliveryPdfsPage() {
       await sendAppEmail({
         to: normalizedTo,
         subject: `Delivery PDF - Order ${backup.id}`,
-        html: `
-          <p>Hello,</p>
-          <p>Here is the legal delivery PDF backup for order <strong>${backup.id}</strong>.</p>
-          <p><a href="${backup.legalPdfUrl}" target="_blank" rel="noreferrer">Open Delivery PDF</a></p>
-        `,
+        html: buildDeliveryReportEmailHtml({
+          orderId: backup.id,
+          customerName: backup.customerName,
+          driverName: backup.driverName,
+          pumpNumbers: backup.pumpNumbers,
+          eKitCodes: backup.eKitCodes,
+          deliveredAt: backup.deliveredAt || backup.deliveredAtISO || backup.statusUpdatedAt || backup.createdAt,
+          ip: backup.deliveredFromIP,
+          lat: backup.deliveredLatitude,
+          lng: backup.deliveredLongitude,
+          statusLabel: "Delivery Completed",
+          pdfUrl: backup.legalPdfUrl,
+          customerSignatureUrl: backup.signatureUrl,
+          driverSignatureUrl: backup.driverSignatureUrl,
+        }),
         text: `Delivery PDF backup for order ${backup.id}: ${backup.legalPdfUrl}`,
       });
 
